@@ -71,11 +71,17 @@ couverture d'inventaire est déclarée par type de ressource. `go test -race
 
 ## Lot 5 — Reporting
 
-- [ ] `dev-audit scan`.
-- [ ] `dev-audit explain`.
-- [ ] Rapport terminal.
-- [ ] Export JSON v1 et validation de schéma.
-- [ ] Golden tests et codes de sortie.
+- [x] `dev-audit scan`.
+- [x] `dev-audit explain`.
+- [x] Rapport terminal.
+- [x] Export JSON v1 et validation de schéma.
+- [x] Golden tests et codes de sortie.
+
+Gate validé : le pipeline complet est exposé avec timeout global et racines
+typées ; le JSON est validé contre le schéma 2020-12 embarqué ; les rapports
+terminal et JSON possèdent des golden tests ; les codes `0`, `1`, `2` et `3`
+sont couverts. Avec le détecteur de concurrence, la couverture atteint 95,1 %
+pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI.
 
 ## Lot 6 — Validation
 

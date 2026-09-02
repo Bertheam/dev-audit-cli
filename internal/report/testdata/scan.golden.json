@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "tool_version": "test-version",
+  "scan": {
+    "started_at": "2026-09-02T20:00:00Z",
+    "completed_at": "2026-09-02T20:00:01Z",
+    "roots": [
+      "/work/a",
+      "/work/z"
+    ],
+    "exclusions": [
+      ".git",
+      "build"
+    ],
+    "read_only": true
+  },
+  "projects": [
+    {
+      "id": "project-one",
+      "path": "/work/app",
+      "kind": "FLUTTER",
+      "requirements": [
+        {
+          "id": "requirement-one",
+          "ecosystem": "flutter",
+          "component": "flutter_sdk",
+          "version_constraint": "3.35.0",
+          "confidence": "REQUIRED_EXPLICITLY",
+          "evidence": [
+            {
+              "source_type": "file",
+              "file_path": "/work/app/.fvmrc",
+              "key": "flutter",
+              "line_hint": 2,
+              "observed_value": "3.35.0",
+              "rule_id": "test.rule"
+            }
+          ],
+          "warnings": []
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "installed_resources": [
+    {
+      "id": "resource-one",
+      "ecosystem": "flutter",
+      "component": "flutter_sdk",
+      "version": "3.35.0",
+      "path": "/sdk/flutter",
+      "size_bytes": 2048,
+      "reference_status": "REFERENCED",
+      "metadata": [
+        {
+          "key": "channel",
+          "value": "stable"
+        },
+        {
+          "key": "dart_sdk_version",
+          "value": "3.9.0"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "relations": [
+    {
+      "project_id": "project-one",
+      "requirement_id": "requirement-one",
+      "resource_id": "resource-one",
+      "match_status": "MATCHED",
+      "rationale": "one exact installed SDK satisfies the requirement",
+      "evidence": [
+        {
+          "source_type": "file",
+          "file_path": "/work/app/.fvmrc",
+          "key": "flutter",
+          "line_hint": 2,
+          "observed_value": "3.35.0",
+          "rule_id": "test.rule"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "TEST_INFO",
+      "severity": "INFO",
+      "scope": "test",
+      "message": "fixture diagnostic",
+      "path": "/work/app"
+    }
+  ]
+}

@@ -1,23 +1,333 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"dev-environment-auditor/internal/application"
+	"dev-environment-auditor/internal/domain"
+	"dev-environment-auditor/internal/report"
 )
 
-const version = "0.0.0-lot4"
+const (
+	version              = "0.0.0-lot5"
+	defaultScanTimeout   = 30 * time.Second
+	maxInputReportBytes  = 64 << 20
+	exitSuccess          = 0
+	exitPartial          = 1
+	exitUsage            = 2
+	exitOperationalError = 3
+)
+
+type commandDependencies struct {
+	scan      func(context.Context, application.Config) domain.ScanDocument
+	readFile  func(string) ([]byte, error)
+	writeFile func(string, []byte) error
+}
+
+type stringListFlag []string
+
+func (values *stringListFlag) String() string {
+	return strings.Join(*values, ",")
+}
+
+func (values *stringListFlag) Set(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return errors.New("value cannot be empty")
+	}
+	*values = append(*values, value)
+	return nil
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(arguments []string, stdout, stderr io.Writer) int {
-	if len(arguments) == 1 && arguments[0] == "version" {
+	scanner := application.NewScanner(application.SystemClock{}, version)
+	return runWithDependencies(arguments, stdout, stderr, commandDependencies{
+		scan:      scanner.Scan,
+		readFile:  readReportFile,
+		writeFile: writePrivateFile,
+	})
+}
+
+func runWithDependencies(
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	dependencies commandDependencies,
+) int {
+	if len(arguments) == 0 {
+		printRootUsage(stderr)
+		return exitUsage
+	}
+	switch arguments[0] {
+	case "version":
+		if len(arguments) != 1 {
+			fmt.Fprintln(stderr, "version does not accept arguments")
+			return exitUsage
+		}
 		fmt.Fprintln(stdout, version)
-		return 0
+		return exitSuccess
+	case "scan":
+		return runScan(arguments[1:], stdout, stderr, dependencies)
+	case "explain":
+		return runExplain(arguments[1:], stdout, stderr, dependencies)
+	case "help", "-h", "--help":
+		printRootUsage(stdout)
+		return exitSuccess
+	default:
+		fmt.Fprintf(stderr, "unknown command %q\n\n", arguments[0])
+		printRootUsage(stderr)
+		return exitUsage
+	}
+}
+
+func runScan(
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	dependencies commandDependencies,
+) int {
+	flags := flag.NewFlagSet("scan", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		printScanUsage(stderr)
+		flags.PrintDefaults()
+	}
+	var projectRoots stringListFlag
+	var exclusions stringListFlag
+	var androidRoots stringListFlag
+	var flutterRoots stringListFlag
+	var fvmRoots stringListFlag
+	var gradleRoots stringListFlag
+	var jdkRoots stringListFlag
+	var format string
+	var outputPath string
+	var timeout time.Duration
+	flags.Var(&projectRoots, "root", "project search root; repeatable and required")
+	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
+	flags.Var(&androidRoots, "android-sdk-root", "Android SDK inventory root; repeatable")
+	flags.Var(&flutterRoots, "flutter-sdk-root", "direct Flutter SDK root; repeatable")
+	flags.Var(&fvmRoots, "fvm-cache-root", "FVM cache root whose children are SDKs; repeatable")
+	flags.Var(&gradleRoots, "gradle-user-home", "Gradle user-home inventory root; repeatable")
+	flags.Var(&jdkRoots, "jdk-root", "JDK home or macOS JDK container root; repeatable")
+	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
+	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
+	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
+	if err := flags.Parse(arguments); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "scan accepts flags only; provide each project root with --root")
+		return exitUsage
+	}
+	if len(projectRoots) == 0 {
+		fmt.Fprintln(stderr, "scan requires at least one --root")
+		return exitUsage
+	}
+	if timeout <= 0 {
+		fmt.Fprintln(stderr, "--timeout must be greater than zero")
+		return exitUsage
+	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format != "terminal" && format != "json" {
+		fmt.Fprintln(stderr, "--format must be terminal or json")
+		return exitUsage
 	}
 
-	fmt.Fprintln(stderr, "Lots 0-4 expose only: dev-audit version; scan arrives in Lot 5")
-	return 2
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	document := dependencies.scan(ctx, application.Config{
+		ProjectRoots:        []string(projectRoots),
+		Exclusions:          []string(exclusions),
+		AndroidSDKRoots:     []string(androidRoots),
+		FlutterSDKRoots:     []string(flutterRoots),
+		FVMCacheRoots:       []string(fvmRoots),
+		GradleUserHomeRoots: []string(gradleRoots),
+		JDKRoots:            []string(jdkRoots),
+	})
+
+	var payload []byte
+	var err error
+	if format == "json" {
+		payload, err = report.RenderJSON(document)
+	} else {
+		payload, err = report.RenderTerminal(document)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot render scan report: %v\n", err)
+		return exitOperationalError
+	}
+	if err := writePayload(stdout, outputPath, payload, dependencies.writeFile); err != nil {
+		fmt.Fprintf(stderr, "cannot write scan report: %v\n", err)
+		return exitOperationalError
+	}
+	if hasErrorDiagnostic(document.Diagnostics) {
+		return exitPartial
+	}
+	return exitSuccess
+}
+
+func runExplain(
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	dependencies commandDependencies,
+) int {
+	flags := flag.NewFlagSet("explain", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		printExplainUsage(stderr)
+		flags.PrintDefaults()
+	}
+	var reportPath string
+	var outputPath string
+	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
+	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
+	if err := flags.Parse(arguments); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if strings.TrimSpace(reportPath) == "" || flags.NArg() != 1 {
+		fmt.Fprintln(stderr, "explain requires --report FILE and exactly one project, requirement, or resource ID")
+		return exitUsage
+	}
+	if outputPath != "" && outputPath != "-" && sameCleanPath(reportPath, outputPath) {
+		fmt.Fprintln(stderr, "--output must not overwrite the input report")
+		return exitUsage
+	}
+
+	content, err := dependencies.readFile(reportPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot read scan report: %v\n", err)
+		return exitOperationalError
+	}
+	document, err := report.DecodeJSON(content)
+	if err != nil {
+		fmt.Fprintf(stderr, "invalid scan report: %v\n", err)
+		return exitOperationalError
+	}
+	payload, found, err := report.Explain(document, flags.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot explain report item: %v\n", err)
+		return exitOperationalError
+	}
+	if !found {
+		fmt.Fprintf(stderr, "report item %q was not found\n", flags.Arg(0))
+		return exitPartial
+	}
+	if err := writePayload(stdout, outputPath, payload, dependencies.writeFile); err != nil {
+		fmt.Fprintf(stderr, "cannot write explanation: %v\n", err)
+		return exitOperationalError
+	}
+	return exitSuccess
+}
+
+func writePayload(
+	stdout io.Writer,
+	outputPath string,
+	payload []byte,
+	writeFile func(string, []byte) error,
+) error {
+	if outputPath != "" && outputPath != "-" {
+		return writeFile(outputPath, payload)
+	}
+	_, err := stdout.Write(payload)
+	return err
+}
+
+func readReportFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxInputReportBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxInputReportBytes {
+		return nil, fmt.Errorf("report exceeds %d bytes", maxInputReportBytes)
+	}
+	return content, nil
+}
+
+func writePrivateFile(path string, content []byte) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("output path cannot be empty")
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("refusing to write through an output symlink")
+		}
+		if !info.Mode().IsRegular() {
+			return errors.New("output path is not a regular file")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+func sameCleanPath(left, right string) bool {
+	leftInfo, leftStatErr := os.Stat(left)
+	rightInfo, rightStatErr := os.Stat(right)
+	if leftStatErr == nil && rightStatErr == nil && os.SameFile(leftInfo, rightInfo) {
+		return true
+	}
+	leftPath, leftErr := filepath.Abs(left)
+	rightPath, rightErr := filepath.Abs(right)
+	return leftErr == nil && rightErr == nil && filepath.Clean(leftPath) == filepath.Clean(rightPath)
+}
+
+func hasErrorDiagnostic(diagnostics []domain.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == domain.SeverityError {
+			return true
+		}
+	}
+	return false
+}
+
+func printRootUsage(output io.Writer) {
+	fmt.Fprintln(output, "Usage:")
+	fmt.Fprintln(output, "  dev-audit scan --root PATH [options]")
+	fmt.Fprintln(output, "  dev-audit explain --report FILE ID [--output FILE]")
+	fmt.Fprintln(output, "  dev-audit version")
+}
+
+func printScanUsage(output io.Writer) {
+	fmt.Fprintln(output, "Usage: dev-audit scan --root PATH [--root PATH ...] [options]")
+	fmt.Fprintln(output, "Use --help to list typed inventory roots, output format, timeout, and exclusions.")
+}
+
+func printExplainUsage(output io.Writer) {
+	fmt.Fprintln(output, "Usage: dev-audit explain --report FILE ID [--output FILE]")
 }

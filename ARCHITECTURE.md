@@ -28,6 +28,19 @@ un projet ne doit pas invalider les résultats démontrables des autres projets.
 Parse les arguments, construit les adaptateurs et sélectionne un reporter. Il ne
 contient aucune règle métier.
 
+Au Lot 5, `scan` exige au moins une racine de projets et accepte des racines
+d'inventaire typées répétables. Un contexte borne le pipeline complet. `explain`
+relit un rapport JSON v1 validé et affiche les preuves d'un identifiant. La CLI
+est la seule couche autorisée à écrire un rapport explicitement demandé.
+
+### `internal/application`
+
+Orchestre Discovery, analyse statique, inventaires séparés par famille et
+corrélation. La couverture des projets et analyseurs est complète uniquement en
+l'absence de diagnostic `WARNING` ou `ERROR`. Chaque famille d'inventaire ne
+déclare ses types complets que si son propre passage respecte la même règle.
+Une erreur partielle conserve les résultats des autres étapes.
+
 ### `internal/domain`
 
 Contient les types `Scan`, `Project`, `Requirement`, `InstalledResource`,
@@ -120,6 +133,12 @@ sensibles et les diagnostics.
 Trie les collections puis produit une représentation terminal ou JSON. Le JSON
 est validé contre `schemas/scan-v1.schema.json`.
 
+Le schéma JSON 2020-12 est embarqué dans le binaire et compilé localement avec
+les assertions de format activées. Le terminal échappe les caractères de
+contrôle et rappelle systématiquement que `NO_REFERENCE_FOUND` n'autorise pas
+une suppression. Les rapports d'entrée de `explain` sont limités à 64 Mio,
+refusent les champs inconnus et les valeurs JSON supplémentaires.
+
 ### `internal/platform`
 
 Expose les frontières injectables : système de fichiers, horloge, environnement
@@ -145,6 +164,10 @@ n'est modifié. Deux écritures explicites restent permises :
 
 Les fichiers temporaires persistants, journaux implicites et caches applicatifs
 sont interdits en Phase 0.
+
+Un rapport explicitement demandé est écrit en `0600`. Les symlinks et fichiers
+non réguliers sont refusés comme destinations ; `explain` ne peut pas remplacer
+le rapport qu'il est en train de lire.
 
 ## Déterminisme
 

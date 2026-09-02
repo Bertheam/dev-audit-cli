@@ -32,6 +32,11 @@
   ressource normalisé ; une racine omise vaut couverture incomplète.
 - Les versions Dart avec préversion ou métadonnée de build restent hors du
   sous-ensemble de corrélation initial et produisent `UNKNOWN`.
+- La CLI ne devine aucune racine d'inventaire : seules les options typées
+  explicitement répétées sont inspectées.
+- Un diagnostic `WARNING` ou `ERROR` rend incomplète la couverture de l'étape ou
+  de la famille d'inventaire concernée ; cette règle privilégie les faux
+  inconnus aux fausses certitudes.
 - Une sortie vers `--output` est une écriture explicitement autorisée ; elle ne
   modifie pas l'environnement audité.
 - `size_bytes` représente uniquement la taille logique complète des fichiers

@@ -213,4 +213,32 @@ mais non analysés, comme Android Build Tools, restent également `UNKNOWN`.
 Les tests couvrent correspondances, absences, ambiguïtés, contraintes Dart,
 canaux Flutter, JDK historiques et modernes, copies profondes et déterminisme.
 `internal/correlation` atteint 87,7 % de couverture avec le détecteur de
-concurrence. Le prochain travail à faire valider est le Lot 5 — Reporting.
+concurrence. Ce gate a autorisé l'ouverture du Lot 5 — Reporting.
+
+## 14. Fin du Lot 5
+
+**État au 2 septembre 2026 : gate validé.** `dev-audit scan` assemble Discovery,
+les analyseurs, quatre passages d'inventaire indépendants et la corrélation sous
+un timeout global. Les racines de projets sont obligatoires ; les racines
+Android, Flutter/FVM, Gradle et JDK sont explicites, typées et répétables. Une
+famille sans `WARNING` ni `ERROR` peut seule autoriser une conclusion `MISSING`.
+
+Le rapport terminal résume projets, exigences, relations, ressources et
+diagnostics en échappant les caractères de contrôle. Le rapport JSON est trié,
+encodé puis validé contre le schéma JSON 2020-12 embarqué avec validation des
+formats. `dev-audit explain --report FILE ID` valide à nouveau le document avant
+d'exposer preuves, justification et statut d'un projet, d'une exigence ou d'une
+ressource.
+
+Seul `--output` autorise une écriture. Les fichiers sont créés ou remplacés en
+`0600`, les symlinks et fichiers non réguliers sont refusés, et `explain` ne peut
+pas écraser sa source. Les rapports d'entrée sont bornés à 64 Mio. Les codes de
+sortie distinguent succès (`0`), rapport partiel ou identifiant absent (`1`),
+usage invalide (`2`) et erreur opérationnelle (`3`).
+
+Les tests d'intégration vérifient le pipeline réel sur les fixtures, l'invariance
+des métadonnées inventoriées, les formats et les codes de sortie. Les golden
+tests figent les sorties terminal et JSON ; le JSON est contrôlé par le schéma
+embarqué. Avec `go test -race -cover ./...`, la couverture atteint 95,1 % pour
+`internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI. Le
+prochain travail à faire valider est le Lot 6 — Validation terrain.
