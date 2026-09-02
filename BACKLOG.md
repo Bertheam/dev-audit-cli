@@ -47,10 +47,15 @@ fixtures inchangées après dix analyses. `go test -race -cover ./...` rapporte
 
 ## Lot 3 — Inventory
 
-- [ ] Définir les racines d'inventaire Android, Flutter/FVM et JDK.
-- [ ] Inventorier versions et chemins sans lancer de gestionnaire de paquets.
-- [ ] Mesurer les tailles avec budgets et diagnostics.
-- [ ] Définir taille logique et, si justifié, taille allouée APFS.
+- [x] Définir des racines typées Android, Flutter, FVM, Gradle et JDK.
+- [x] Inventorier versions et chemins sans lancer de gestionnaire de paquets.
+- [x] Mesurer les tailles avec budgets et diagnostics.
+- [x] Définir la taille logique et différer la taille allouée APFS non fiable.
+
+Gate validé : erreurs partielles, limites et symlinks sont couverts ; une mesure
+incomplète n'expose aucun total partiel ; contenu et mtimes restent inchangés
+après dix passages. `go test -race -cover ./...` rapporte 80,8 % de couverture
+pour `internal/inventory`.
 
 ## Lot 4 — Correlation
 

@@ -75,9 +75,21 @@ une URL ou une expression potentiellement sensible.
 
 ### `internal/inventory`
 
-Recense les installations dans des emplacements explicitement autorisés ou
-déduits de variables connues. La mesure de taille possède des limites de temps,
-de profondeur et de nombre d'entrées.
+Recense les installations dans des emplacements explicitement autorisés. Une
+future couche CLI pourra proposer des chemins déduits de variables connues avant
+validation. La mesure de taille possède des limites de temps, de profondeur et
+de nombre d'entrées.
+
+Au Lot 3, le moteur exige des racines typées explicites ; la déduction depuis
+l'environnement reste une responsabilité future de la CLI. Il reconnaît les
+paquets Android structurés, les SDK Flutter directs ou sous FVM, les
+distributions Wrapper et plugins AGP/Kotlin du cache Gradle, et les JDK via leurs
+métadonnées statiques. Aucun gestionnaire ni exécutable inventorié n'est lancé.
+
+La métrique `size_bytes` est la somme logique des fichiers réguliers. Les
+symlinks ne sont pas suivis. Dès qu'une permission, une limite ou l'annulation
+rend le parcours incomplet, la taille est absente et un diagnostic explique la
+couverture manquante. La taille allouée APFS n'est pas estimée dans cette phase.
 
 ### `internal/correlation`
 

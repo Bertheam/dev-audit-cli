@@ -1,6 +1,6 @@
 # Dev Environment Auditor
 
-> Statut : Lots 0, 1 et 2 terminés ; inventaire local non encore implémenté
+> Statut : Lots 0 à 3 terminés ; corrélation non encore implémentée
 > Plateforme : macOS
 > Périmètre : Flutter et Android
 > Interface cible : CLI `dev-audit`
@@ -39,6 +39,12 @@ Gradle Wrapper, AGP/Kotlin, les catalogues de versions utilisés, les niveaux SD
 NDK/CMake et les toolchains Java/Kotlin. Une expression non résolue reste
 `PROBABLY_REQUIRED` ou `UNKNOWN` sans version inventée. Chaque résultat indique
 son fichier, sa clé, sa ligne et la règle appliquée.
+
+Le Lot 3 inventorie, depuis des racines explicitement typées, les plateformes et
+Build Tools Android, NDK/CMake, SDK Flutter/FVM, caches Gradle/AGP/Kotlin et JDK.
+La version Dart embarquée est conservée avec le SDK Flutter. Chaque ressource
+reçoit un chemin, une version statique lorsque disponible et une taille logique
+bornée. Une mesure interrompue ou incomplète ne publie aucune taille partielle.
 
 Les commandes publiques `scan` et `explain` ne seront développées que dans les
 lots suivants. Les analyseurs sont pour l'instant une API interne testée ; ils
@@ -83,7 +89,7 @@ go vet ./...
 go run ./cmd/dev-audit version
 ```
 
-Résultat attendu à la fin du Lot 2 : `0.0.0-lot2`.
+Résultat attendu à la fin du Lot 3 : `0.0.0-lot3`.
 
 Validation structurelle du JSON sans Go :
 

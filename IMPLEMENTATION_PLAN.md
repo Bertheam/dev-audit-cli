@@ -171,5 +171,21 @@ elles restent probables ou inconnues et ne portent aucune version fabriquée.
 Les tests couvrent valeurs explicites, formats historiques, catalogues, valeurs
 dynamiques, fichiers malformés, limites, annulation, symlinks et invariance du
 contenu et des dates de modification. `internal/analyzers` atteint 83,0 % de
-couverture avec le détecteur de concurrence. Le prochain travail à faire valider
-est le Lot 3 — Inventory.
+couverture avec le détecteur de concurrence. Ce gate a autorisé l'ouverture du
+Lot 3 — Inventory.
+
+## 12. Fin du Lot 3
+
+**État au 2 septembre 2026 : gate validé.** L'inventaire reçoit des racines
+typées et explicites pour Android SDK, Flutter SDK, cache FVM, Gradle User Home
+et JDK. Il extrait les versions depuis des métadonnées allowlistées sans lancer
+de gestionnaire de paquets ou d'exécutable installé. La version Dart embarquée
+et les caches Wrapper/AGP/Kotlin restent ainsi corrélables au Lot 4.
+
+La taille publiée est la somme logique complète des fichiers réguliers. Les
+symlinks et fichiers spéciaux ne sont pas suivis ; toute erreur, annulation ou
+limite dépassée supprime la taille au lieu de conserver un total partiel. Les
+tests couvrent versions, fallbacks, données malformées, valeurs sensibles,
+budgets, erreurs simulées, déterminisme et invariance des fichiers.
+`internal/inventory` atteint 80,8 % de couverture avec le détecteur de
+concurrence. Le prochain travail à faire valider est le Lot 4 — Correlation.

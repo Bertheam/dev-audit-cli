@@ -18,13 +18,11 @@
    du module Go.
 2. Licence du projet.
 3. Politique d'identifiants stables et option de pseudonymisation des chemins.
-4. Sémantique des tailles : logique uniquement ou logique et allouée APFS.
-5. Liste exacte des racines d'inventaire automatiques et manière de les afficher
+4. Liste exacte des suggestions de racines d'inventaire automatiques et manière de les afficher
    avant le scan.
-6. Limites par défaut : profondeur, nombre de fichiers, taille maximale lue et
-   durée d'un adaptateur.
-7. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
-8. Politique de compatibilité macOS du binaire distribué.
+5. Durée maximale imposée par la future CLI à chaque adaptateur.
+6. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
+7. Politique de compatibilité macOS du binaire distribué.
 
 ## Clarifications appliquées
 
@@ -32,5 +30,7 @@
   d'inutilité.
 - Une sortie vers `--output` est une écriture explicitement autorisée ; elle ne
   modifie pas l'environnement audité.
+- `size_bytes` représente uniquement la taille logique complète des fichiers
+  réguliers ; la taille allouée APFS est différée.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.
