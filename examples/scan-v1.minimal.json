@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "tool_version": "0.0.0-lot2",
+  "scan": {
+    "started_at": "2026-09-02T20:00:00Z",
+    "completed_at": "2026-09-02T20:00:01Z",
+    "roots": [
+      "/Users/example/Projects"
+    ],
+    "exclusions": [],
+    "read_only": true
+  },
+  "projects": [],
+  "installed_resources": [],
+  "relations": [],
+  "diagnostics": []
+}
