@@ -1,6 +1,6 @@
 # Dev Environment Auditor
 
-> Statut : Lots 0 à 3 terminés ; corrélation non encore implémentée
+> Statut : Lots 0 à 4 terminés ; reporting CLI non encore implémenté
 > Plateforme : macOS
 > Périmètre : Flutter et Android
 > Interface cible : CLI `dev-audit`
@@ -46,6 +46,13 @@ La version Dart embarquée est conservée avec le SDK Flutter. Chaque ressource
 reçoit un chemin, une version statique lorsque disponible et une taille logique
 bornée. Une mesure interrompue ou incomplète ne publie aucune taille partielle.
 
+Le Lot 4 relie les exigences explicites aux ressources inventoriées. Il prend en
+charge les versions exactes, les plages Dart stables usuelles, les canaux
+Flutter documentés et le niveau majeur d'un JDK. `MISSING` exige une couverture
+d'inventaire complète du type concerné ; `NO_REFERENCE_FOUND` exige une
+découverte et une analyse complètes. Toute ambiguïté, métadonnée absente ou
+syntaxe non prise en charge reste `UNKNOWN` ou `AMBIGUOUS`.
+
 Les commandes publiques `scan` et `explain` ne seront développées que dans les
 lots suivants. Les analyseurs sont pour l'instant une API interne testée ; ils
 ne sont pas encore exposés par la CLI.
@@ -89,7 +96,7 @@ go vet ./...
 go run ./cmd/dev-audit version
 ```
 
-Résultat attendu à la fin du Lot 3 : `0.0.0-lot3`.
+Résultat attendu à la fin du Lot 4 : `0.0.0-lot4`.
 
 Validation structurelle du JSON sans Go :
 

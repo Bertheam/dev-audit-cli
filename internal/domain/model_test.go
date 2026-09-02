@@ -5,7 +5,7 @@ import "testing"
 func TestMinimalDocumentIsValid(t *testing.T) {
 	document := ScanDocument{
 		SchemaVersion: SchemaVersion,
-		ToolVersion:   "0.0.0-lot3",
+		ToolVersion:   "0.0.0-lot4",
 		Scan: ScanMetadata{
 			StartedAt:   "2026-09-02T20:00:00Z",
 			CompletedAt: "2026-09-02T20:00:01Z",
@@ -27,7 +27,7 @@ func TestMinimalDocumentIsValid(t *testing.T) {
 func TestWritableScanIsRejected(t *testing.T) {
 	document := ScanDocument{
 		SchemaVersion: SchemaVersion,
-		ToolVersion:   "0.0.0-lot3",
+		ToolVersion:   "0.0.0-lot4",
 		Scan: ScanMetadata{
 			StartedAt:   "2026-09-02T20:00:00Z",
 			CompletedAt: "2026-09-02T20:00:01Z",

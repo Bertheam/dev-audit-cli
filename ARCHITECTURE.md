@@ -96,6 +96,20 @@ couverture manquante. La taille allouée APFS n'est pas estimée dans cette phas
 Normalise les versions et relie exigences et ressources. Il ne transforme jamais
 une absence de correspondance en recommandation de suppression.
 
+Le Lot 4 reçoit un contrat de couverture explicite. `MISSING` n'est produit que
+pour une exigence statique explicite lorsque le type de ressource normalisé a
+été entièrement inventorié. `NO_REFERENCE_FOUND` n'est produit que si la
+découverte des projets et leur analyse sont toutes deux complètes. Une exigence
+probable, une contrainte non prise en charge, une version installée absente ou
+une correspondance multiple protège les candidats concernés en `UNKNOWN`.
+
+Les versions Android, Flutter, Gradle et plugins sont associées exactement ; un
+canal Flutter peut aussi correspondre à la métadonnée `channel`. Un JDK est
+comparé par niveau de fonctionnalité (`17` avec `17.0.12`, ou `8` avec
+`1.8.0_442`). Les contraintes Dart stables acceptées sont `any`, une version
+exacte, les comparateurs intersectés et la notation caret. Elles sont évaluées
+sur `dart_sdk_version` du SDK Flutter inventorié.
+
 ### `internal/evidence`
 
 Centralise les preuves, les règles de confiance, la suppression des valeurs

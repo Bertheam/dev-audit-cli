@@ -28,6 +28,10 @@
 
 - `NO_REFERENCE_FOUND` qualifie la couverture d'une ressource et non une preuve
   d'inutilité.
+- `MISSING` exige une couverture d'inventaire complète déclarée pour le type de
+  ressource normalisé ; une racine omise vaut couverture incomplète.
+- Les versions Dart avec préversion ou métadonnée de build restent hors du
+  sous-ensemble de corrélation initial et produisent `UNKNOWN`.
 - Une sortie vers `--output` est une écriture explicitement autorisée ; elle ne
   modifie pas l'environnement audité.
 - `size_bytes` représente uniquement la taille logique complète des fichiers

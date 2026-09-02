@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-const version = "0.0.0-lot3"
+const version = "0.0.0-lot4"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -18,6 +18,6 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	fmt.Fprintln(stderr, "Lots 0-3 expose only: dev-audit version; scan arrives in Lot 5")
+	fmt.Fprintln(stderr, "Lots 0-4 expose only: dev-audit version; scan arrives in Lot 5")
 	return 2
 }

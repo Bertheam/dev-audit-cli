@@ -188,4 +188,29 @@ limite dépassée supprime la taille au lieu de conserver un total partiel. Les
 tests couvrent versions, fallbacks, données malformées, valeurs sensibles,
 budgets, erreurs simulées, déterminisme et invariance des fichiers.
 `internal/inventory` atteint 80,8 % de couverture avec le détecteur de
-concurrence. Le prochain travail à faire valider est le Lot 4 — Correlation.
+concurrence. Ce gate a autorisé l'ouverture du Lot 4 — Correlation.
+
+## 13. Fin du Lot 4
+
+**État au 2 septembre 2026 : gate validé.** Le moteur de corrélation produit une
+relation pour chaque exigence sans modifier les résultats des analyseurs ou de
+l'inventaire. Il normalise `compile_sdk` vers une plateforme Android, relie Dart
+au SDK embarqué dans Flutter, compare les versions exactes pour Android,
+Flutter, Gradle et les plugins, et compare un JDK par niveau de fonctionnalité.
+
+Le sous-ensemble Dart couvre les versions stables `x.y.z`, `any`, les bornes
+`>=`, `>`, `<=`, `<`, l'égalité et la notation caret. Les préversions, suffixes
+de build et syntaxes composées non prises en charge restent inconnus avec un
+diagnostic, sans lancer `dart pub`.
+
+Deux preuves de couverture sont séparées : une liste de types d'inventaire
+complets autorise `MISSING`, tandis que la combinaison découverte complète et
+analyse complète autorise `NO_REFERENCE_FOUND`. Toute exigence non explicite,
+version candidate absente ou correspondance multiple protège les ressources
+possibles contre un faux statut « non référencé ». Les composants inventoriés
+mais non analysés, comme Android Build Tools, restent également `UNKNOWN`.
+
+Les tests couvrent correspondances, absences, ambiguïtés, contraintes Dart,
+canaux Flutter, JDK historiques et modernes, copies profondes et déterminisme.
+`internal/correlation` atteint 87,7 % de couverture avec le détecteur de
+concurrence. Le prochain travail à faire valider est le Lot 5 — Reporting.

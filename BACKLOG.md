@@ -59,10 +59,15 @@ pour `internal/inventory`.
 
 ## Lot 4 — Correlation
 
-- [ ] Normaliser les versions et contraintes.
-- [ ] Associer exigences explicites et ressources exactes.
-- [ ] Représenter ressources manquantes et correspondances ambiguës.
-- [ ] Calculer `NO_REFERENCE_FOUND` uniquement dans la couverture analysée.
+- [x] Normaliser les versions et contraintes.
+- [x] Associer exigences explicites et ressources exactes.
+- [x] Représenter ressources manquantes et correspondances ambiguës.
+- [x] Calculer `NO_REFERENCE_FOUND` uniquement dans la couverture analysée.
+
+Gate validé : chaque exigence reçoit une relation déterministe ; les candidats
+incertains empêchent les faux `MISSING` et faux `NO_REFERENCE_FOUND` ; la
+couverture d'inventaire est déclarée par type de ressource. `go test -race
+-cover ./...` rapporte 87,7 % de couverture pour `internal/correlation`.
 
 ## Lot 5 — Reporting
 
