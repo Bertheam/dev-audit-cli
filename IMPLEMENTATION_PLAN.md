@@ -217,11 +217,12 @@ concurrence. Ce gate a autorisé l'ouverture du Lot 5 — Reporting.
 
 ## 14. Fin du Lot 5
 
-**État au 2 septembre 2026 : gate validé.** `dev-audit scan` assemble Discovery,
-les analyseurs, quatre passages d'inventaire indépendants et la corrélation sous
-un timeout global. Les racines de projets sont obligatoires ; les racines
-Android, Flutter/FVM, Gradle et JDK sont explicites, typées et répétables. Une
-famille sans `WARNING` ni `ERROR` peut seule autoriser une conclusion `MISSING`.
+**État au 2 septembre 2026 : gate initial validé.** `dev-audit scan` assemble
+Discovery, les analyseurs, quatre passages d'inventaire indépendants et la
+corrélation sous un timeout global. À ce gate initial, les racines de projets
+étaient obligatoires et les racines Android, Flutter/FVM, Gradle et JDK étaient
+explicites, typées et répétables. Une famille sans `WARNING` ni `ERROR` pouvait
+seule autoriser une conclusion `MISSING`.
 
 Le rapport terminal résume projets, exigences, relations, ressources et
 diagnostics en échappant les caractères de contrôle. Le rapport JSON est trié,
@@ -242,3 +243,12 @@ tests figent les sorties terminal et JSON ; le JSON est contrôlé par le schém
 embarqué. Avec `go test -race -cover ./...`, la couverture atteint 95,1 % pour
 `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI. Le
 prochain travail à faire valider est le Lot 6 — Validation terrain.
+
+**Durcissement issu du premier test terrain, 3 septembre 2026.** La CLI détecte
+désormais les racines omises depuis l'environnement, le `PATH`, les emplacements
+conventionnels et une recherche profonde bornée. Les options explicites restent
+disponibles et désactivent la détection pour leur famille. Pour préserver les
+invariants de corrélation, une couverture heuristique peut établir `MATCHED`,
+mais ne peut produire ni `MISSING` ni `NO_REFERENCE_FOUND`. Les prochaines
+validations devront aussi mesurer le bruit des symlinks et distinguer les
+toolchains de l'hôte de celles fournies par Docker.

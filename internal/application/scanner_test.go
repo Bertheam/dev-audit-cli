@@ -107,6 +107,71 @@ func TestScannerPreservesInvalidExplicitRootForPartialReport(t *testing.T) {
 	}
 }
 
+func TestHeuristicInventoryNeverProducesMissingConclusion(t *testing.T) {
+	flutterRoot := createFlutterSDK(t)
+	versionPath := filepath.Join(flutterRoot, "bin", "cache", "flutter.version.json")
+	if err := os.WriteFile(
+		versionPath,
+		[]byte(`{"frameworkVersion":"9.9.9","channel":"stable","dartSdkVersion":"9.9.9"}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	scanner := application.NewScanner(application.SystemClock{}, "test-version")
+	document := scanner.Scan(context.Background(), application.Config{
+		ProjectRoots:               []string{filepath.Join("..", "..", "testdata", "flutter_explicit")},
+		FlutterSDKRoots:            []string{flutterRoot},
+		HeuristicInventoryFamilies: []string{"flutter"},
+	})
+
+	for _, relation := range document.Relations {
+		if relation.MatchStatus == domain.Missing {
+			t.Fatalf("heuristic inventory produced MISSING: %#v", relation)
+		}
+	}
+}
+
+func TestHeuristicProjectDiscoveryNeverProducesNoReferenceFound(t *testing.T) {
+	projectRoot := t.TempDir()
+	jdkRoot := filepath.Join(t.TempDir(), "jdk")
+	if err := os.MkdirAll(filepath.Join(jdkRoot, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range map[string]string{
+		filepath.Join(jdkRoot, "release"):      `JAVA_VERSION="21"`,
+		filepath.Join(jdkRoot, "bin", "java"):  "fixture",
+		filepath.Join(jdkRoot, "bin", "javac"): "fixture",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := projectRoot
+	scanner := application.NewScanner(application.SystemClock{}, "test-version")
+	document := scanner.Scan(context.Background(), application.Config{
+		ProjectRoots:              []string{projectRoot},
+		JDKRoots:                  []string{jdkRoot},
+		ProjectDiscoveryHeuristic: true,
+		PreScanDiagnostics: []domain.Diagnostic{{
+			Code:     "AUTODETECT_ROOT_FOUND",
+			Severity: domain.SeverityInfo,
+			Scope:    "autodetect/projects",
+			Message:  "fixture",
+			Path:     &path,
+		}},
+	})
+
+	if len(document.InstalledResources) != 1 {
+		t.Fatalf("resources = %d, want 1", len(document.InstalledResources))
+	}
+	if document.InstalledResources[0].ReferenceStatus != domain.ReferenceUnknown {
+		t.Fatalf("heuristic project coverage produced %s", document.InstalledResources[0].ReferenceStatus)
+	}
+	if !hasDiagnostic(document.Diagnostics, "AUTODETECT_ROOT_FOUND") {
+		t.Fatalf("pre-scan diagnostic was not preserved: %#v", document.Diagnostics)
+	}
+}
+
 func createFlutterSDK(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "flutter")

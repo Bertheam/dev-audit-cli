@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dev-environment-auditor/internal/application"
+	"dev-environment-auditor/internal/autodetect"
 	"dev-environment-auditor/internal/domain"
 	"dev-environment-auditor/internal/report"
 )
@@ -28,6 +29,7 @@ const (
 
 type commandDependencies struct {
 	scan      func(context.Context, application.Config) domain.ScanDocument
+	detect    func(context.Context, autodetect.Config) autodetect.Result
 	readFile  func(string) ([]byte, error)
 	writeFile func(string, []byte) error
 }
@@ -53,8 +55,10 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) int {
 	scanner := application.NewScanner(application.SystemClock{}, version)
+	detector := autodetect.New()
 	return runWithDependencies(arguments, stdout, stderr, commandDependencies{
 		scan:      scanner.Scan,
+		detect:    detector.Detect,
 		readFile:  readReportFile,
 		writeFile: writePrivateFile,
 	})
@@ -114,7 +118,9 @@ func runScan(
 	var format string
 	var outputPath string
 	var timeout time.Duration
-	flags.Var(&projectRoots, "root", "project search root; repeatable and required")
+	var autoDetect bool
+	var deepSearch bool
+	flags.Var(&projectRoots, "root", "project search root; repeatable; auto-detected when omitted")
 	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
 	flags.Var(&androidRoots, "android-sdk-root", "Android SDK inventory root; repeatable")
 	flags.Var(&flutterRoots, "flutter-sdk-root", "direct Flutter SDK root; repeatable")
@@ -124,6 +130,8 @@ func runScan(
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
 	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
+	flags.BoolVar(&autoDetect, "auto-detect", true, "detect omitted project and inventory roots without executing tools")
+	flags.BoolVar(&deepSearch, "deep-search", true, "run a bounded search of conventional development locations")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -131,11 +139,7 @@ func runScan(
 		return exitUsage
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "scan accepts flags only; provide each project root with --root")
-		return exitUsage
-	}
-	if len(projectRoots) == 0 {
-		fmt.Fprintln(stderr, "scan requires at least one --root")
+		fmt.Fprintln(stderr, "scan accepts flags only")
 		return exitUsage
 	}
 	if timeout <= 0 {
@@ -150,14 +154,63 @@ func runScan(
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	preScanDiagnostics := []domain.Diagnostic{}
+	heuristicInventoryFamilies := []string{}
+	projectDiscoveryHeuristic := false
+	if autoDetect && dependencies.detect != nil {
+		needFlutterFamily := len(flutterRoots)+len(fvmRoots) == 0
+		detected := dependencies.detect(ctx, autodetect.Config{
+			NeedProjectRoots: len(projectRoots) == 0,
+			NeedAndroid:      len(androidRoots) == 0,
+			NeedFlutter:      needFlutterFamily,
+			NeedFVM:          needFlutterFamily,
+			NeedGradle:       len(gradleRoots) == 0,
+			NeedJDK:          len(jdkRoots) == 0,
+			DeepSearch:       deepSearch,
+		})
+		preScanDiagnostics = append(preScanDiagnostics, detected.Diagnostics...)
+		if len(projectRoots) == 0 {
+			projectRoots = append(projectRoots, detected.Roots.ProjectRoots...)
+			projectDiscoveryHeuristic = detected.ProjectDiscoveryHeuristic
+		}
+		if len(androidRoots) == 0 {
+			androidRoots = append(androidRoots, detected.Roots.AndroidSDKRoots...)
+		}
+		if needFlutterFamily {
+			flutterRoots = append(flutterRoots, detected.Roots.FlutterSDKRoots...)
+			fvmRoots = append(fvmRoots, detected.Roots.FVMCacheRoots...)
+		}
+		if len(gradleRoots) == 0 {
+			gradleRoots = append(gradleRoots, detected.Roots.GradleUserHomeRoots...)
+		}
+		if len(jdkRoots) == 0 {
+			jdkRoots = append(jdkRoots, detected.Roots.JDKRoots...)
+		}
+		for _, family := range detected.HeuristicInventoryFamilies {
+			heuristicInventoryFamilies = append(heuristicInventoryFamilies, string(family))
+		}
+	}
+	if len(projectRoots) == 0 {
+		if autoDetect {
+			fmt.Fprintln(stderr, "no project root was provided or detected; pass --root PATH")
+		} else {
+			fmt.Fprintln(stderr, "scan requires at least one --root when --auto-detect=false")
+		}
+		return exitUsage
+	}
+
 	document := dependencies.scan(ctx, application.Config{
-		ProjectRoots:        []string(projectRoots),
-		Exclusions:          []string(exclusions),
-		AndroidSDKRoots:     []string(androidRoots),
-		FlutterSDKRoots:     []string(flutterRoots),
-		FVMCacheRoots:       []string(fvmRoots),
-		GradleUserHomeRoots: []string(gradleRoots),
-		JDKRoots:            []string(jdkRoots),
+		ProjectRoots:               []string(projectRoots),
+		Exclusions:                 []string(exclusions),
+		AndroidSDKRoots:            []string(androidRoots),
+		FlutterSDKRoots:            []string(flutterRoots),
+		FVMCacheRoots:              []string(fvmRoots),
+		GradleUserHomeRoots:        []string(gradleRoots),
+		JDKRoots:                   []string(jdkRoots),
+		PreScanDiagnostics:         preScanDiagnostics,
+		ProjectDiscoveryHeuristic:  projectDiscoveryHeuristic,
+		HeuristicInventoryFamilies: heuristicInventoryFamilies,
 	})
 
 	var payload []byte
@@ -318,14 +371,14 @@ func hasErrorDiagnostic(diagnostics []domain.Diagnostic) bool {
 
 func printRootUsage(output io.Writer) {
 	fmt.Fprintln(output, "Usage:")
-	fmt.Fprintln(output, "  dev-audit scan --root PATH [options]")
+	fmt.Fprintln(output, "  dev-audit scan [--root PATH] [options]")
 	fmt.Fprintln(output, "  dev-audit explain --report FILE ID [--output FILE]")
 	fmt.Fprintln(output, "  dev-audit version")
 }
 
 func printScanUsage(output io.Writer) {
-	fmt.Fprintln(output, "Usage: dev-audit scan --root PATH [--root PATH ...] [options]")
-	fmt.Fprintln(output, "Use --help to list typed inventory roots, output format, timeout, and exclusions.")
+	fmt.Fprintln(output, "Usage: dev-audit scan [--root PATH ...] [options]")
+	fmt.Fprintln(output, "Omitted roots are detected locally; use --auto-detect=false for explicit-only mode.")
 }
 
 func printExplainUsage(output io.Writer) {

@@ -33,6 +33,13 @@ type Config struct {
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
 	JDKRoots            []string
+	PreScanDiagnostics  []domain.Diagnostic
+	// ProjectDiscoveryHeuristic prevents absence-of-reference conclusions when
+	// project roots came from an automatic search rather than an explicit scope.
+	ProjectDiscoveryHeuristic bool
+	// HeuristicInventoryFamilies prevents MISSING conclusions for inventory
+	// families whose roots were found heuristically and may be incomplete.
+	HeuristicInventoryFamilies []string
 }
 
 type Scanner struct {
@@ -88,7 +95,9 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	)
 	resources, inventoryDiagnostics, completeScopes := scanner.inspectInventory(ctx, config)
 
-	discoveryComplete := len(discoveryResult.Roots) > 0 && diagnosticsComplete(discoveryResult.Diagnostics)
+	discoveryComplete := len(discoveryResult.Roots) > 0 &&
+		diagnosticsComplete(discoveryResult.Diagnostics) &&
+		!config.ProjectDiscoveryHeuristic
 	analysisComplete := discoveryComplete && diagnosticsComplete(analyzerDiagnostics)
 	correlationResult := correlation.Correlate(projects, resources, correlation.Coverage{
 		ProjectDiscoveryComplete:    discoveryComplete,
@@ -97,9 +106,11 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	})
 
 	diagnostics := make([]domain.Diagnostic, 0,
-		len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
+		len(config.PreScanDiagnostics)+
+			len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
 			len(inventoryDiagnostics)+len(correlationResult.Diagnostics),
 	)
+	diagnostics = append(diagnostics, config.PreScanDiagnostics...)
 	diagnostics = append(diagnostics, discoveryResult.Diagnostics...)
 	diagnostics = append(diagnostics, analyzerDiagnostics...)
 	diagnostics = append(diagnostics, inventoryDiagnostics...)
@@ -130,6 +141,7 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 }
 
 type inventoryGroup struct {
+	family     string
 	configured bool
 	config     inventory.Config
 	scopes     []correlation.InventoryScope
@@ -141,6 +153,7 @@ func (scanner *Scanner) inspectInventory(
 ) ([]domain.InstalledResource, []domain.Diagnostic, []correlation.InventoryScope) {
 	groups := []inventoryGroup{
 		{
+			family:     "android",
 			configured: len(config.AndroidSDKRoots) > 0,
 			config: inventory.Config{
 				AndroidSDKRoots: cloneStrings(config.AndroidSDKRoots),
@@ -152,6 +165,7 @@ func (scanner *Scanner) inspectInventory(
 			},
 		},
 		{
+			family:     "flutter",
 			configured: len(config.FlutterSDKRoots)+len(config.FVMCacheRoots) > 0,
 			config: inventory.Config{
 				FlutterSDKRoots: cloneStrings(config.FlutterSDKRoots),
@@ -162,6 +176,7 @@ func (scanner *Scanner) inspectInventory(
 			},
 		},
 		{
+			family:     "gradle",
 			configured: len(config.GradleUserHomeRoots) > 0,
 			config: inventory.Config{
 				GradleUserHomeRoots: cloneStrings(config.GradleUserHomeRoots),
@@ -173,6 +188,7 @@ func (scanner *Scanner) inspectInventory(
 			},
 		},
 		{
+			family:     "java",
 			configured: len(config.JDKRoots) > 0,
 			config: inventory.Config{
 				JDKRoots: cloneStrings(config.JDKRoots),
@@ -195,7 +211,8 @@ func (scanner *Scanner) inspectInventory(
 		result := scanner.inventory.Inspect(ctx, group.config)
 		resources = append(resources, result.Resources...)
 		diagnostics = append(diagnostics, result.Diagnostics...)
-		if diagnosticsComplete(result.Diagnostics) {
+		if diagnosticsComplete(result.Diagnostics) &&
+			!containsString(config.HeuristicInventoryFamilies, group.family) {
 			completeScopes = append(completeScopes, group.scopes...)
 		}
 	}
@@ -209,6 +226,15 @@ func (scanner *Scanner) inspectInventory(
 	}
 	sortDiagnostics(diagnostics)
 	return resources, diagnostics, completeScopes
+}
+
+func containsString(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func diagnosticsComplete(diagnostics []domain.Diagnostic) bool {

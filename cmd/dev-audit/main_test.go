@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dev-environment-auditor/internal/application"
+	"dev-environment-auditor/internal/autodetect"
 	"dev-environment-auditor/internal/domain"
 	"dev-environment-auditor/internal/report"
 )
@@ -87,6 +88,90 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
+	var captured application.Config
+	detectionCalled := false
+	dependencies := commandDependencies{
+		detect: func(_ context.Context, config autodetect.Config) autodetect.Result {
+			detectionCalled = true
+			if !config.NeedProjectRoots || !config.NeedAndroid || !config.NeedFlutter ||
+				!config.NeedFVM || !config.NeedGradle || !config.NeedJDK || !config.DeepSearch {
+				t.Fatalf("unexpected detection config: %#v", config)
+			}
+			path := "/detected/projects"
+			return autodetect.Result{
+				Roots: autodetect.Roots{
+					ProjectRoots:        []string{path},
+					AndroidSDKRoots:     []string{"/detected/android"},
+					FlutterSDKRoots:     []string{"/detected/flutter"},
+					FVMCacheRoots:       []string{"/detected/fvm"},
+					GradleUserHomeRoots: []string{"/detected/gradle"},
+					JDKRoots:            []string{"/detected/jdk"},
+				},
+				Diagnostics: []domain.Diagnostic{{
+					Code:     "AUTODETECT_ROOT_FOUND",
+					Severity: domain.SeverityInfo,
+					Scope:    "autodetect/projects",
+					Message:  "fixture",
+					Path:     &path,
+				}},
+				HeuristicInventoryFamilies: []autodetect.Family{
+					autodetect.FamilyAndroid,
+					autodetect.FamilyFlutter,
+					autodetect.FamilyGradle,
+					autodetect.FamilyJava,
+				},
+				ProjectDiscoveryHeuristic: true,
+			}
+		},
+		scan: func(_ context.Context, config application.Config) domain.ScanDocument {
+			captured = config
+			return validDocument()
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"scan", "--format", "json"},
+		&stdout,
+		&stderr,
+		dependencies,
+	); exitCode != exitSuccess {
+		t.Fatalf("scan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	if !detectionCalled {
+		t.Fatal("automatic detector was not called")
+	}
+	if len(captured.ProjectRoots) != 1 || captured.ProjectRoots[0] != "/detected/projects" ||
+		len(captured.AndroidSDKRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
+		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 ||
+		len(captured.JDKRoots) != 1 {
+		t.Fatalf("detected roots not forwarded: %#v", captured)
+	}
+	if !captured.ProjectDiscoveryHeuristic || len(captured.HeuristicInventoryFamilies) != 4 {
+		t.Fatalf("heuristic coverage not forwarded: %#v", captured)
+	}
+	if len(captured.PreScanDiagnostics) != 1 || captured.PreScanDiagnostics[0].Code != "AUTODETECT_ROOT_FOUND" {
+		t.Fatalf("detection diagnostics not forwarded: %#v", captured.PreScanDiagnostics)
+	}
+}
+
+func TestScanExplicitOnlyModeStillRequiresProjectRoot(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"scan", "--auto-detect=false"},
+		&stdout,
+		&stderr,
+		commandDependencies{},
+	); exitCode != exitUsage {
+		t.Fatalf("scan exit = %d, want %d", exitCode, exitUsage)
+	}
+	if !strings.Contains(stderr.String(), "requires at least one --root") {
+		t.Fatalf("unexpected error: %q", stderr.String())
 	}
 }
 

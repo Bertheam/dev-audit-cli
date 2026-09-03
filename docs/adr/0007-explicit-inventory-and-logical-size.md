@@ -1,6 +1,6 @@
 # ADR 0007 — Inventaire explicite et taille logique
 
-- Statut : accepté
+- Statut : accepté, complété par l'ADR 0010
 - Date : 2026-09-02
 
 ## Contexte

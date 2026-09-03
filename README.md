@@ -1,6 +1,6 @@
 # Dev Environment Auditor
 
-> Statut : Lots 0 à 5 terminés ; validation terrain non encore réalisée
+> Statut : Lots 0 à 5 terminés ; validation terrain et durcissement MVP en cours
 > Plateforme : macOS
 > Périmètre : Flutter et Android
 > Interface cible : CLI `dev-audit`
@@ -16,7 +16,7 @@ d'installation, de réparation, de build, de télémétrie ou de synchronisation
 
 La CLI devra :
 
-- analyser uniquement les racines fournies explicitement ;
+- détecter automatiquement les racines probables, avec mode explicite disponible ;
 - découvrir les projets Flutter et Android sans suivre les symlinks externes ;
 - extraire les exigences Flutter/FVM, Dart, Gradle, AGP, JDK, SDK et NDK ;
 - inventorier les installations pertinentes et estimer leur taille ;
@@ -58,6 +58,13 @@ terminal ou JSON v1 validé par le schéma embarqué, et permet d'expliquer un
 projet, une exigence ou une ressource depuis un rapport JSON. Les diagnostics
 partiels restent dans le rapport et déterminent le code de sortie sans supprimer
 les observations valides.
+
+Le premier passage terrain a ajouté une auto-détection locale et bornée. Sans
+option de chemin, la CLI cherche les projets et les installations Android,
+Flutter/FVM, Gradle et JDK dans l'environnement, le `PATH`, les emplacements
+macOS usuels et les dossiers de développement courants. Elle ne lance aucun
+outil détecté. Une couverture trouvée heuristiquement peut produire un
+`MATCHED`, mais jamais un `MISSING` ou `NO_REFERENCE_FOUND`.
 
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
@@ -108,7 +115,21 @@ python3 -m json.tool examples/scan-v1.minimal.json
 
 ## Utiliser la CLI
 
-Rapport terminal avec une racine de projets explicite :
+Usage recommandé sans connaissance préalable des chemins :
+
+```bash
+go run ./cmd/dev-audit scan
+```
+
+La CLI effectue d'abord les détections directes : variables d'environnement,
+exécutables présents dans le `PATH`, emplacements macOS et gestionnaires usuels.
+Elle complète par défaut avec une recherche profonde bornée dans les dossiers
+de développement courants et les sous-dossiers de premier niveau de
+`Documents`. `testdata`, les caches générés et les symlinks ne sont pas
+parcourus.
+
+Pour limiter la recherche à une racine de projets connue tout en laissant les
+toolchains être détectées automatiquement :
 
 ```bash
 go run ./cmd/dev-audit scan \
@@ -116,10 +137,12 @@ go run ./cmd/dev-audit scan \
   --timeout 30s
 ```
 
-Ajouter uniquement les racines d'inventaire que l'on souhaite auditer :
+Le mode entièrement explicite reste disponible pour un audit reproductible et
+pour autoriser les conclusions d'absence dans le périmètre déclaré :
 
 ```bash
 go run ./cmd/dev-audit scan \
+  --auto-detect=false \
   --root /Users/alice/Projects \
   --android-sdk-root /Users/alice/Library/Android/sdk \
   --flutter-sdk-root /Users/alice/Developer/flutter \
@@ -128,16 +151,19 @@ go run ./cmd/dev-audit scan \
   --jdk-root /Library/Java/JavaVirtualMachines
 ```
 
-Les options de racine et `--exclude` sont répétables. Aucune racine
-d'inventaire n'est devinée depuis le dossier personnel ou l'environnement. Sans
-racine d'inventaire, le scan reste valide, mais les conclusions `MISSING` sont
-désactivées.
+Les options de racine et `--exclude` sont répétables. Un type de racine fourni
+explicitement remplace l'auto-détection de cette famille. `--deep-search=false`
+conserve les détections directes sans le parcours approfondi.
+
+Les racines automatiques sont toujours considérées comme heuristiques. Elles
+permettent d'établir une correspondance positive, mais ne prouvent pas que le
+reste du disque a été couvert. Les statuts `MISSING` exigent donc une racine
+d'inventaire explicite et `NO_REFERENCE_FOUND` une racine de projets explicite.
 
 Créer un rapport JSON local puis expliquer un identifiant affiché :
 
 ```bash
 go run ./cmd/dev-audit scan \
-  --root /Users/alice/Projects \
   --format json \
   --output audit.json
 

@@ -9,7 +9,7 @@ des observations vérifiables sans modifier les projets ni les toolchains.
 
 ```text
 Arguments CLI
-  -> validation des racines et exclusions
+  -> auto-détection ou validation des racines et exclusions
   -> discovery
   -> analyzers
   -> inventory adapters
@@ -28,10 +28,29 @@ un projet ne doit pas invalider les résultats démontrables des autres projets.
 Parse les arguments, construit les adaptateurs et sélectionne un reporter. Il ne
 contient aucune règle métier.
 
-Au Lot 5, `scan` exige au moins une racine de projets et accepte des racines
-d'inventaire typées répétables. Un contexte borne le pipeline complet. `explain`
-relit un rapport JSON v1 validé et affiche les preuves d'un identifiant. La CLI
-est la seule couche autorisée à écrire un rapport explicitement demandé.
+`scan` peut fonctionner sans chemin fourni. La CLI demande alors au détecteur
+local des racines de projets et d'inventaire, puis transmet au service
+applicatif la provenance heuristique de leur couverture. Les racines typées
+restent répétables et permettent un mode entièrement explicite. Un contexte
+borne la détection et le pipeline. `explain` relit un rapport JSON v1 validé et
+affiche les preuves d'un identifiant. La CLI est la seule couche autorisée à
+écrire un rapport explicitement demandé.
+
+### `internal/autodetect`
+
+Détecte sans sous-processus les projets, Android SDK, Flutter/FVM, Gradle User
+Home et JDK. La première passe utilise les variables connues, le `PATH` et les
+emplacements conventionnels. Une seconde passe optionnelle parcourt des dossiers
+de développement bornés à 250 000 entrées par emplacement, 750 000 au total et
+une profondeur de 10.
+
+Les signatures exigent des marqueurs structurels : un SDK Android doit présenter
+au moins deux répertoires caractéristiques ; Flutter exige `bin/flutter` et
+`packages/flutter` ; un JDK exige `release`, `bin/java` et `bin/javac`. Les
+Le parcours profond ne suit pas les symlinks ; les chemins d'exécutables du
+`PATH` sont résolus puis validés par leurs marqueurs. Les caches de build,
+environnements virtuels et `testdata` sont ignorés. Les chemins trouvés et leur
+source sont exposés par diagnostics.
 
 ### `internal/application`
 
@@ -40,6 +59,11 @@ corrélation. La couverture des projets et analyseurs est complète uniquement e
 l'absence de diagnostic `WARNING` ou `ERROR`. Chaque famille d'inventaire ne
 déclare ses types complets que si son propre passage respecte la même règle.
 Une erreur partielle conserve les résultats des autres étapes.
+
+Une racine de projets auto-détectée rend volontairement incomplète la couverture
+de découverte pour la corrélation : aucun `NO_REFERENCE_FOUND` n'en découle. De
+même, une famille d'inventaire automatique n'autorise jamais `MISSING`. Une
+correspondance positive exacte reste possible dans les deux cas.
 
 ### `internal/domain`
 
@@ -88,13 +112,12 @@ une URL ou une expression potentiellement sensible.
 
 ### `internal/inventory`
 
-Recense les installations dans des emplacements explicitement autorisés. Une
-future couche CLI pourra proposer des chemins déduits de variables connues avant
-validation. La mesure de taille possède des limites de temps, de profondeur et
-de nombre d'entrées.
+Recense les installations dans des emplacements transmis par la CLI, qu'ils
+soient explicites ou détectés. La mesure de taille possède des limites de temps,
+de profondeur et de nombre d'entrées.
 
-Au Lot 3, le moteur exige des racines typées explicites ; la déduction depuis
-l'environnement reste une responsabilité future de la CLI. Il reconnaît les
+Le moteur d'inventaire exige toujours des racines typées ; leur déduction est la
+responsabilité de `internal/autodetect` et de la CLI. Il reconnaît les
 paquets Android structurés, les SDK Flutter directs ou sous FVM, les
 distributions Wrapper et plugins AGP/Kotlin du cache Gradle, et les JDK via leurs
 métadonnées statiques. Aucun gestionnaire ni exécutable inventorié n'est lancé.

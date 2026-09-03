@@ -142,7 +142,7 @@ func (document ScanDocument) Validate() error {
 		return errors.New("Phase 0 scans must be read-only")
 	}
 	if len(document.Scan.Roots) == 0 {
-		return errors.New("at least one explicit scan root is required")
+		return errors.New("at least one scan root is required")
 	}
 	if document.Scan.StartedAt == "" || document.Scan.CompletedAt == "" {
 		return errors.New("scan timestamps are required")

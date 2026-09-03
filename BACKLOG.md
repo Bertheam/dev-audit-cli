@@ -89,3 +89,13 @@ pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI
 - [ ] Tester sur 10 à 15 machines avec vérité terrain.
 - [ ] Mesurer associations explicites, erreurs et utilité perçue.
 - [ ] Documenter la décision GO/PIVOT/STOP.
+
+Retours du premier Mac :
+
+- [x] Consigner un résultat pseudonymisé dans
+  [`docs/validation-results/2026-09-03-mac-01.md`](docs/validation-results/2026-09-03-mac-01.md).
+- [x] Rendre `scan` utilisable sans fournir manuellement les chemins.
+- [x] Ajouter une recherche profonde bornée et des signatures structurelles.
+- [x] Interdire `MISSING` et `NO_REFERENCE_FOUND` sur couverture heuristique.
+- [ ] Réduire le bruit des diagnostics de symlinks générés.
+- [ ] Distinguer une toolchain hôte d'une toolchain fournie par Docker.

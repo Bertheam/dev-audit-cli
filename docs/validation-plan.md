@@ -12,7 +12,8 @@ des versions historiques et des configurations Groovy ou Kotlin DSL variées.
 
 ## Préparation
 
-1. Obtenir un consentement explicite et faire choisir les racines analysées.
+1. Obtenir un consentement explicite et annoncer les zones conventionnelles que
+   l'auto-détection locale peut parcourir.
 2. Noter versions macOS, architecture, organisation Android SDK et usage de FVM.
 3. Constituer avec le testeur une vérité terrain minimale : projets conservés,
    versions explicitement connues et toolchains installées.
@@ -20,7 +21,9 @@ des versions historiques et des configurations Groovy ou Kotlin DSL variées.
 
 ## Protocole
 
-1. Exécuter le même binaire et la même configuration sur chaque machine.
+1. Exécuter d'abord le même binaire sans racines, puis faire confirmer les
+   chemins détectés par le testeur ; utiliser les options explicites pour
+   corriger ou reproduire le périmètre si nécessaire.
 2. Conserver le rapport JSON localement ou le pseudonymiser avant partage.
 3. Vérifier manuellement chaque association importante avec le testeur.
 4. Qualifier faux positifs, faux négatifs, ambiguïtés et diagnostics incompris.

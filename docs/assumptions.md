@@ -3,7 +3,8 @@
 ## Hypothèses actives
 
 - La Phase 0 cible uniquement macOS sur architecture Apple Silicon ou Intel.
-- Les racines de projets sont toujours fournies explicitement.
+- Les utilisateurs non experts ne connaissent pas nécessairement leurs racines
+  de projets, SDK, caches ou JDK ; la CLI doit les rechercher localement.
 - L'analyse statique suffit pour prouver les versions déclarées littéralement.
 - Une configuration dynamique peut rester `PROBABLY_REQUIRED` ou `UNKNOWN`.
 - L'inventaire peut lire les emplacements Android/Flutter/JDK autorisés sans les
@@ -18,11 +19,10 @@
    du module Go.
 2. Licence du projet.
 3. Politique d'identifiants stables et option de pseudonymisation des chemins.
-4. Liste exacte des suggestions de racines d'inventaire automatiques et manière de les afficher
-   avant le scan.
-5. Durée maximale imposée par la future CLI à chaque adaptateur.
-6. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
-7. Politique de compatibilité macOS du binaire distribué.
+4. Durée maximale imposée par la future CLI à chaque adaptateur.
+5. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
+6. Politique de compatibilité macOS du binaire distribué.
+7. Représentation des toolchains fournies par Docker par opposition à l'hôte.
 
 ## Clarifications appliquées
 
@@ -32,8 +32,10 @@
   ressource normalisé ; une racine omise vaut couverture incomplète.
 - Les versions Dart avec préversion ou métadonnée de build restent hors du
   sous-ensemble de corrélation initial et produisent `UNKNOWN`.
-- La CLI ne devine aucune racine d'inventaire : seules les options typées
-  explicitement répétées sont inspectées.
+- La CLI détecte par défaut les racines omises depuis l'environnement, le
+  `PATH`, les emplacements usuels et une recherche profonde bornée.
+- Une couverture automatique reste heuristique : elle autorise les
+  correspondances positives, jamais `MISSING` ni `NO_REFERENCE_FOUND`.
 - Un diagnostic `WARNING` ou `ERROR` rend incomplète la couverture de l'étape ou
   de la famille d'inventaire concernée ; cette règle privilégie les faux
   inconnus aux fausses certitudes.
