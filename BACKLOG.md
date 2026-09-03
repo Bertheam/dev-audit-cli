@@ -87,6 +87,13 @@ pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI
 
 - [x] Fournir un installateur local produisant la commande autonome `dev-audit`.
 - [ ] Construire un paquet macOS de test distribuable à d'autres machines.
+- [ ] Publier des binaires précompilés `darwin/arm64` et `darwin/amd64` afin que
+  l'utilisateur final n'ait pas besoin d'installer Go.
+- [ ] Fournir une installation utilisateur sans Go, via une archive versionnée,
+  puis idéalement une formule Homebrew.
+- [ ] Publier les sommes de contrôle des binaires et documenter leur
+  vérification avant installation.
+- [ ] Tester `dev-audit scan` sur un Mac propre où Go n'est pas installé.
 - [ ] Tester sur 10 à 15 machines avec vérité terrain.
 - [ ] Mesurer associations explicites, erreurs et utilité perçue.
 - [ ] Documenter la décision GO/PIVOT/STOP.
