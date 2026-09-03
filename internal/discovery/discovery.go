@@ -245,6 +245,7 @@ func (discoverer *Discoverer) walkRoot(
 	visited := 0
 	diagnostics := make([]domain.Diagnostic, 0)
 	depthReported := make(map[string]struct{})
+	symlinksSkipped := 0
 
 	err := discoverer.fileSystem.WalkDir(root, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
@@ -314,12 +315,7 @@ func (discoverer *Discoverer) walkRoot(
 		}
 
 		if entry.Type()&fs.ModeSymlink != 0 {
-			diagnostics = append(diagnostics, newDiagnostic(
-				"DISCOVERY_SYMLINK_SKIPPED",
-				domain.SeverityInfo,
-				"symbolic link was not followed",
-				currentPath,
-			))
+			symlinksSkipped++
 			return nil
 		}
 
@@ -340,6 +336,14 @@ func (discoverer *Discoverer) walkRoot(
 			"cannot complete scan root",
 			root,
 			err,
+		))
+	}
+	if symlinksSkipped > 0 {
+		diagnostics = append(diagnostics, newDiagnostic(
+			"DISCOVERY_SYMLINKS_SKIPPED",
+			domain.SeverityInfo,
+			fmt.Sprintf("%d symbolic links were not followed", symlinksSkipped),
+			root,
 		))
 	}
 

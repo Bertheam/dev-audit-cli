@@ -79,5 +79,5 @@ déclarés et parcourus sans avertissement ni erreur.
 La commande simple fonctionne sans connaissance des chemins et conserve les
 options répétables pour les audits reproductibles. Le parcours automatique peut
 produire des diagnostics de limite ou manquer une installation atypique ; ces
-cas restent `UNKNOWN`. La détection des toolchains contenues dans Docker est une
-évolution séparée.
+cas restent `UNKNOWN`. La détection statique des toolchains déclarées dans
+Docker a ensuite été traitée séparément par l'ADR 0011.

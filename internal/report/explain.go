@@ -47,9 +47,13 @@ func explainProject(document domain.ScanDocument, project domain.Project) []byte
 	fmt.Fprintf(&output, "  kind: %s\n", project.Kind)
 	fmt.Fprintf(&output, "  requirements (%d):\n", len(project.Requirements))
 	for _, requirement := range project.Requirements {
-		relation, _ := relationFor(document.Relations, project.ID, requirement.ID)
-		fmt.Fprintf(&output, "    - [%s] %s %s/%s constraint=%s\n",
-			relation.MatchStatus,
+		relation, _ := relationFor(document.Relations, project.ID, requirement.ID, domain.EnvironmentHost)
+		dockerRelation, dockerExists := relationFor(document.Relations, project.ID, requirement.ID, domain.EnvironmentDocker)
+		fmt.Fprintf(&output, "    - [HOST:%s", relation.MatchStatus)
+		if dockerExists {
+			fmt.Fprintf(&output, " DOCKER:%s", dockerRelation.MatchStatus)
+		}
+		fmt.Fprintf(&output, "] %s %s/%s constraint=%s\n",
 			terminalValue(requirement.ID),
 			terminalValue(requirement.Ecosystem),
 			terminalValue(requirement.Component),
@@ -71,18 +75,24 @@ func explainRequirement(
 	fmt.Fprintf(&output, "  component: %s/%s\n", terminalValue(requirement.Ecosystem), terminalValue(requirement.Component))
 	fmt.Fprintf(&output, "  constraint: %s\n", optionalTerminalValue(requirement.VersionConstraint))
 	fmt.Fprintf(&output, "  confidence: %s\n", requirement.Confidence)
-	if relation, exists := relationFor(document.Relations, project.ID, requirement.ID); exists {
-		fmt.Fprintf(&output, "  match: %s\n", relation.MatchStatus)
-		fmt.Fprintf(&output, "  rationale: %s\n", terminalValue(relation.Rationale))
+	for _, environment := range []domain.ExecutionEnvironment{domain.EnvironmentHost, domain.EnvironmentDocker} {
+		relation, exists := relationFor(document.Relations, project.ID, requirement.ID, environment)
+		if !exists && environment == domain.EnvironmentDocker {
+			continue
+		}
+		if !exists {
+			fmt.Fprintf(&output, "  %s match: UNKNOWN (relation absent from report)\n", environment)
+			appendWarnings(&output, requirement.Warnings, "  ")
+			appendEvidence(&output, requirement.Evidence, "  ")
+			continue
+		}
+		fmt.Fprintf(&output, "  %s match: %s\n", environment, relation.MatchStatus)
+		fmt.Fprintf(&output, "  %s rationale: %s\n", environment, terminalValue(relation.Rationale))
 		if relation.ResourceID != nil {
-			fmt.Fprintf(&output, "  resource: %s\n", terminalValue(*relation.ResourceID))
+			fmt.Fprintf(&output, "  %s resource: %s\n", environment, terminalValue(*relation.ResourceID))
 		}
 		appendWarnings(&output, relation.Warnings, "  ")
 		appendEvidence(&output, relation.Evidence, "  ")
-	} else {
-		output.WriteString("  match: UNKNOWN (relation absent from report)\n")
-		appendWarnings(&output, requirement.Warnings, "  ")
-		appendEvidence(&output, requirement.Evidence, "  ")
 	}
 	return []byte(output.String())
 }
@@ -114,8 +124,8 @@ func explainResource(document domain.ScanDocument, resource domain.InstalledReso
 			continue
 		}
 		matched++
-		fmt.Fprintf(&output, "    - project=%s requirement=%s status=%s\n",
-			terminalValue(relation.ProjectID), terminalValue(relation.RequirementID), relation.MatchStatus)
+		fmt.Fprintf(&output, "    - environment=%s project=%s requirement=%s status=%s\n",
+			relationEnvironment(relation), terminalValue(relation.ProjectID), terminalValue(relation.RequirementID), relation.MatchStatus)
 		fmt.Fprintf(&output, "      rationale=%s\n", terminalValue(relation.Rationale))
 	}
 	if matched == 0 {
@@ -124,9 +134,15 @@ func explainResource(document domain.ScanDocument, resource domain.InstalledReso
 	return []byte(output.String())
 }
 
-func relationFor(relations []domain.Relation, projectID, requirementID string) (domain.Relation, bool) {
+func relationFor(
+	relations []domain.Relation,
+	projectID string,
+	requirementID string,
+	environment domain.ExecutionEnvironment,
+) (domain.Relation, bool) {
 	for _, relation := range relations {
-		if relation.ProjectID == projectID && relation.RequirementID == requirementID {
+		if relation.ProjectID == projectID && relation.RequirementID == requirementID &&
+			relationEnvironment(relation) == environment {
 			return relation, true
 		}
 	}

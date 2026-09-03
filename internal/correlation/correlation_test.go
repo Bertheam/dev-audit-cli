@@ -43,6 +43,9 @@ func TestCorrelateMatchesSupportedExplicitRequirements(t *testing.T) {
 		t.Fatalf("got %d relations, want %d", len(result.Relations), len(project.Requirements))
 	}
 	for _, relation := range result.Relations {
+		if relation.Environment != domain.EnvironmentHost {
+			t.Errorf("relation %s environment = %s, want HOST", relation.RequirementID, relation.Environment)
+		}
 		if relation.MatchStatus != domain.Matched || relation.ResourceID == nil {
 			t.Errorf("relation %s = %s (%v), want unique match", relation.RequirementID, relation.MatchStatus, relation.ResourceID)
 		}

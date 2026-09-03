@@ -68,6 +68,27 @@
     {
       "project_id": "project-one",
       "requirement_id": "requirement-one",
+      "environment": "DOCKER",
+      "match_status": "MATCHED",
+      "rationale": "one Dockerfile declaration satisfies the requirement",
+      "evidence": [
+        {
+          "source_type": "file",
+          "file_path": "/work/app/.fvmrc",
+          "key": "flutter",
+          "line_hint": 2,
+          "observed_value": "3.35.0",
+          "rule_id": "test.rule"
+        }
+      ],
+      "warnings": [
+        "declarative Docker match only"
+      ]
+    },
+    {
+      "project_id": "project-one",
+      "requirement_id": "requirement-one",
+      "environment": "HOST",
       "resource_id": "resource-one",
       "match_status": "MATCHED",
       "rationale": "one exact installed SDK satisfies the requirement",

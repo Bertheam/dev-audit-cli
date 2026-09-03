@@ -1,6 +1,6 @@
 # Dev Environment Auditor
 
-> Statut : Lots 0 à 5 terminés ; validation terrain et durcissement MVP en cours
+> Statut : MVP CLI 0.1.0 ; validation terrain multi-machines en cours
 > Plateforme : macOS
 > Périmètre : Flutter et Android
 > Interface cible : CLI `dev-audit`
@@ -21,6 +21,7 @@ La CLI devra :
 - extraire les exigences Flutter/FVM, Dart, Gradle, AGP, JDK, SDK et NDK ;
 - inventorier les installations pertinentes et estimer leur taille ;
 - relier projets, exigences et ressources installées ;
+- distinguer les correspondances de l'hôte de celles déclarées par Docker ;
 - rattacher chaque conclusion à des preuves et à un niveau de confiance ;
 - produire un rapport terminal et un export JSON v1 déterministes.
 
@@ -66,13 +67,22 @@ macOS usuels et les dossiers de développement courants. Elle ne lance aucun
 outil détecté. Une couverture trouvée heuristiquement peut produire un
 `MATCHED`, mais jamais un `MISSING` ou `NO_REFERENCE_FOUND`.
 
+Le durcissement suivant sépare maintenant les relations `HOST` et `DOCKER`.
+L'analyse statique et bornée des `Dockerfile` reconnaît les images JDK usuelles
+et peut prouver qu'une exigence Java est déclarée dans Docker sans prétendre que
+l'image est téléchargée ou qu'un conteneur tourne. Une référence d'image
+dynamique reste `UNKNOWN`. Les symlinks ignorés sont résumés une seule fois par
+racine au lieu de produire un diagnostic par lien.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
 
 La vision plus large d'origine est conservée dans
-[`docs/vision.md`](docs/vision.md). Docker, le nettoyage, la GUI et le cloud
-restent explicitement hors Phase 0.
+[`docs/vision.md`](docs/vision.md). L'inventaire du daemon et des caches Docker,
+le lancement de conteneurs, le nettoyage, la GUI et le cloud restent
+explicitement hors Phase 0 ; seule la lecture statique des `Dockerfile` est
+incluse pour qualifier l'environnement d'une exigence.
 
 ## Installer Go sur macOS avec Homebrew
 
@@ -102,10 +112,10 @@ Après installation de Go :
 go test ./...
 go test -race -cover ./...
 go vet ./...
-go run ./cmd/dev-audit version
+go test ./cmd/dev-audit
 ```
 
-Résultat attendu à la fin du Lot 5 : `0.0.0-lot5`.
+Version MVP actuelle : `0.1.0-mvp`.
 
 Validation structurelle du JSON sans Go :
 
@@ -113,12 +123,37 @@ Validation structurelle du JSON sans Go :
 python3 -m json.tool examples/scan-v1.minimal.json
 ```
 
+## Installer la commande
+
+L'utilisateur final n'a pas besoin de connaître `go run`. Depuis la racine du
+dépôt, l'installateur construit un binaire autonome et choisit un dossier déjà
+présent dans le `PATH` et accessible sans `sudo` :
+
+```bash
+./scripts/install.sh
+dev-audit version
+```
+
+Sur un Mac Apple Silicon avec Homebrew, le choix automatique est généralement
+`/opt/homebrew/bin`. Un autre dossier peut être donné explicitement :
+
+```bash
+./scripts/install.sh /opt/homebrew/bin
+dev-audit version
+```
+
+Si aucun dossier standard accessible n'existe, le repli est `~/.local/bin` et
+le script affiche la ligne `export PATH=...` à appliquer.
+
+L'installation du binaire est une opération de distribution distincte du scan.
+La commande `dev-audit scan` reste intégralement en lecture seule.
+
 ## Utiliser la CLI
 
 Usage recommandé sans connaissance préalable des chemins :
 
 ```bash
-go run ./cmd/dev-audit scan
+dev-audit scan
 ```
 
 La CLI effectue d'abord les détections directes : variables d'environnement,
@@ -132,7 +167,7 @@ Pour limiter la recherche à une racine de projets connue tout en laissant les
 toolchains être détectées automatiquement :
 
 ```bash
-go run ./cmd/dev-audit scan \
+dev-audit scan \
   --root /Users/alice/Projects \
   --timeout 30s
 ```
@@ -141,7 +176,7 @@ Le mode entièrement explicite reste disponible pour un audit reproductible et
 pour autoriser les conclusions d'absence dans le périmètre déclaré :
 
 ```bash
-go run ./cmd/dev-audit scan \
+dev-audit scan \
   --auto-detect=false \
   --root /Users/alice/Projects \
   --android-sdk-root /Users/alice/Library/Android/sdk \
@@ -160,14 +195,26 @@ permettent d'établir une correspondance positive, mais ne prouvent pas que le
 reste du disque a été couvert. Les statuts `MISSING` exigent donc une racine
 d'inventaire explicite et `NO_REFERENCE_FOUND` une racine de projets explicite.
 
+Une exigence peut avoir simultanément deux lectures dans le rapport :
+
+```text
+[HOST:UNKNOWN DOCKER:MATCHED] "java"/"jdk" constraint="21"
+```
+
+`HOST` compare l'exigence aux installations inventoriées sur le Mac. `DOCKER`
+compare cette même exigence aux images JDK déclarées statiquement dans les
+`Dockerfile`. Un match Docker n'est jamais ajouté aux ressources installées de
+l'hôte, n'exécute pas Docker et ne prouve ni le téléchargement de l'image ni
+l'état d'un conteneur.
+
 Créer un rapport JSON local puis expliquer un identifiant affiché :
 
 ```bash
-go run ./cmd/dev-audit scan \
+dev-audit scan \
   --format json \
   --output audit.json
 
-go run ./cmd/dev-audit explain --report audit.json resource-0123456789abcdef
+dev-audit explain --report audit.json resource-0123456789abcdef
 ```
 
 Un fichier de sortie est créé avec les permissions `0600`. La CLI refuse une

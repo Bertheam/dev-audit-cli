@@ -4,14 +4,15 @@ Roots (2):
   - "/work/a"
   - "/work/z"
 Summary: 1 projects, 1 requirements, 1 resources, 1 diagnostics
-Relations: MATCHED=1 MISSING=0 AMBIGUOUS=0 UNKNOWN=0
+Relations HOST: MATCHED=1 MISSING=0 AMBIGUOUS=0 UNKNOWN=0
+Relations DOCKER: MATCHED=1 MISSING=0 AMBIGUOUS=0 UNKNOWN=0
 Resources: REFERENCED=1 NO_REFERENCE_FOUND=0 UNKNOWN=0
 
 Projects (1):
 - [FLUTTER] "/work/app" (id="project-one")
-    - [MATCHED] "flutter"/"flutter_sdk" constraint="3.35.0" confidence=REQUIRED_EXPLICITLY -> "/sdk/flutter"
+    - [HOST:MATCHED DOCKER:MATCHED] "flutter"/"flutter_sdk" constraint="3.35.0" confidence=REQUIRED_EXPLICITLY -> "/sdk/flutter"
 
-Installed resources (1):
+Installed HOST resources (1):
 - [REFERENCED] "flutter"/"flutter_sdk" version="3.35.0" size=2.0 KiB
     path="/sdk/flutter" id="resource-one"
 

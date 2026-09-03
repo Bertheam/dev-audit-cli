@@ -124,9 +124,21 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["project_id", "requirement_id", "match_status", "rationale", "evidence", "warnings"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"environment": {"const": "DOCKER"}},
+            "required": ["environment"]
+          },
+          "then": {
+            "not": {"required": ["resource_id"]}
+          }
+        }
+      ],
       "properties": {
         "project_id": {"type": "string", "minLength": 1},
         "requirement_id": {"type": "string", "minLength": 1},
+        "environment": {"enum": ["HOST", "DOCKER"]},
         "resource_id": {"type": "string", "minLength": 1},
         "match_status": {"enum": ["MATCHED", "MISSING", "AMBIGUOUS", "UNKNOWN"]},
         "rationale": {"type": "string", "minLength": 1},

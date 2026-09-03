@@ -81,17 +81,26 @@ func TestDiscoverDoesNotFollowSymlinks(t *testing.T) {
 	externalProject := filepath.Join(externalRoot, "external_flutter")
 	createFlutterProject(t, externalProject, false)
 
-	symlinkPath := filepath.Join(root, "linked_project")
-	if err := os.Symlink(externalProject, symlinkPath); err != nil {
+	if err := os.Symlink(externalProject, filepath.Join(root, "linked_project")); err != nil {
 		t.Fatalf("create symlink: %v", err)
+	}
+	if err := os.Symlink(externalProject, filepath.Join(root, "second_link")); err != nil {
+		t.Fatalf("create second symlink: %v", err)
 	}
 
 	result := New(OSFileSystem{}).Discover(context.Background(), Config{Roots: []string{root}})
 	if len(result.Projects) != 0 {
 		t.Fatalf("expected no project through symlink, got %#v", result.Projects)
 	}
-	if !hasDiagnostic(result.Diagnostics, "DISCOVERY_SYMLINK_SKIPPED") {
-		t.Fatal("expected skipped symlink diagnostic")
+	diagnostic, found := diagnosticByCode(result.Diagnostics, "DISCOVERY_SYMLINKS_SKIPPED")
+	if !found {
+		t.Fatal("expected summarized skipped-symlinks diagnostic")
+	}
+	if diagnostic.Path == nil || *diagnostic.Path != root || diagnostic.Message != "2 symbolic links were not followed" {
+		t.Fatalf("unexpected summarized diagnostic: %#v", diagnostic)
+	}
+	if countDiagnostics(result.Diagnostics, "DISCOVERY_SYMLINKS_SKIPPED") != 1 {
+		t.Fatalf("expected one symlink summary, got %#v", result.Diagnostics)
 	}
 }
 
@@ -265,12 +274,27 @@ func containsProject(projects []domain.Project, projectPath string) bool {
 }
 
 func hasDiagnostic(diagnostics []domain.Diagnostic, code string) bool {
+	_, found := diagnosticByCode(diagnostics, code)
+	return found
+}
+
+func diagnosticByCode(diagnostics []domain.Diagnostic, code string) (domain.Diagnostic, bool) {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Code == code {
-			return true
+			return diagnostic, true
 		}
 	}
-	return false
+	return domain.Diagnostic{}, false
+}
+
+func countDiagnostics(diagnostics []domain.Diagnostic, code string) int {
+	count := 0
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			count++
+		}
+	}
+	return count
 }
 
 type fileSnapshot struct {

@@ -41,6 +41,13 @@ const (
 	MatchUnknown MatchStatus = "UNKNOWN"
 )
 
+type ExecutionEnvironment string
+
+const (
+	EnvironmentHost   ExecutionEnvironment = "HOST"
+	EnvironmentDocker ExecutionEnvironment = "DOCKER"
+)
+
 type DiagnosticSeverity string
 
 const (
@@ -96,13 +103,16 @@ type InstalledResource struct {
 }
 
 type Relation struct {
-	ProjectID     string      `json:"project_id"`
-	RequirementID string      `json:"requirement_id"`
-	ResourceID    *string     `json:"resource_id,omitempty"`
-	MatchStatus   MatchStatus `json:"match_status"`
-	Rationale     string      `json:"rationale"`
-	Evidence      []Evidence  `json:"evidence"`
-	Warnings      []string    `json:"warnings"`
+	ProjectID     string `json:"project_id"`
+	RequirementID string `json:"requirement_id"`
+	// Environment is optional in JSON so reports emitted before environment
+	// awareness remain readable. An omitted value means HOST.
+	Environment ExecutionEnvironment `json:"environment,omitempty"`
+	ResourceID  *string              `json:"resource_id,omitempty"`
+	MatchStatus MatchStatus          `json:"match_status"`
+	Rationale   string               `json:"rationale"`
+	Evidence    []Evidence           `json:"evidence"`
+	Warnings    []string             `json:"warnings"`
 }
 
 type Diagnostic struct {
@@ -146,6 +156,18 @@ func (document ScanDocument) Validate() error {
 	}
 	if document.Scan.StartedAt == "" || document.Scan.CompletedAt == "" {
 		return errors.New("scan timestamps are required")
+	}
+	for index, relation := range document.Relations {
+		environment := relation.Environment
+		if environment == "" {
+			environment = EnvironmentHost
+		}
+		if environment != EnvironmentHost && environment != EnvironmentDocker {
+			return fmt.Errorf("relations[%d].environment is invalid", index)
+		}
+		if environment == EnvironmentDocker && relation.ResourceID != nil {
+			return fmt.Errorf("relations[%d]: Docker declarations cannot reference installed HOST resources", index)
+		}
 	}
 	return nil
 }

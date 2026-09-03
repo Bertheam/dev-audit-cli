@@ -12,6 +12,7 @@ import (
 	"dev-environment-auditor/internal/correlation"
 	"dev-environment-auditor/internal/discovery"
 	"dev-environment-auditor/internal/domain"
+	"dev-environment-auditor/internal/environments"
 	"dev-environment-auditor/internal/inventory"
 )
 
@@ -43,17 +44,19 @@ type Config struct {
 }
 
 type Scanner struct {
-	discoverer *discovery.Discoverer
-	analyzer   *analyzers.Analyzer
-	inventory  *inventory.Inventory
-	clock      Clock
-	version    string
+	discoverer   *discovery.Discoverer
+	analyzer     *analyzers.Analyzer
+	environments *environments.Analyzer
+	inventory    *inventory.Inventory
+	clock        Clock
+	version      string
 }
 
 func NewScanner(clock Clock, version string) *Scanner {
 	return NewScannerWithAdapters(
 		discovery.New(discovery.OSFileSystem{}),
 		analyzers.New(analyzers.OSFileSystem{}),
+		environments.New(environments.OSFileSystem{}),
 		inventory.New(inventory.OSFileSystem{}),
 		clock,
 		version,
@@ -63,6 +66,7 @@ func NewScanner(clock Clock, version string) *Scanner {
 func NewScannerWithAdapters(
 	discoverer *discovery.Discoverer,
 	analyzer *analyzers.Analyzer,
+	environmentAnalyzer *environments.Analyzer,
 	inventoryInspector *inventory.Inventory,
 	clock Clock,
 	version string,
@@ -71,11 +75,12 @@ func NewScannerWithAdapters(
 		clock = SystemClock{}
 	}
 	return &Scanner{
-		discoverer: discoverer,
-		analyzer:   analyzer,
-		inventory:  inventoryInspector,
-		clock:      clock,
-		version:    version,
+		discoverer:   discoverer,
+		analyzer:     analyzer,
+		environments: environmentAnalyzer,
+		inventory:    inventoryInspector,
+		clock:        clock,
+		version:      version,
 	}
 }
 
@@ -93,6 +98,11 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		discoveryResult.Projects,
 		analyzers.Config{},
 	)
+	environmentResult := scanner.environments.AnalyzeProjects(
+		ctx,
+		projects,
+		environments.Config{},
+	)
 	resources, inventoryDiagnostics, completeScopes := scanner.inspectInventory(ctx, config)
 
 	discoveryComplete := len(discoveryResult.Roots) > 0 &&
@@ -108,11 +118,13 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	diagnostics := make([]domain.Diagnostic, 0,
 		len(config.PreScanDiagnostics)+
 			len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
+			len(environmentResult.Diagnostics)+
 			len(inventoryDiagnostics)+len(correlationResult.Diagnostics),
 	)
 	diagnostics = append(diagnostics, config.PreScanDiagnostics...)
 	diagnostics = append(diagnostics, discoveryResult.Diagnostics...)
 	diagnostics = append(diagnostics, analyzerDiagnostics...)
+	diagnostics = append(diagnostics, environmentResult.Diagnostics...)
 	diagnostics = append(diagnostics, inventoryDiagnostics...)
 	diagnostics = append(diagnostics, correlationResult.Diagnostics...)
 	sortDiagnostics(diagnostics)
@@ -123,6 +135,8 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	}
 	exclusions := normalizedStrings(config.Exclusions)
 	completedAt := scanner.clock.Now().UTC()
+	relations := append([]domain.Relation{}, correlationResult.Relations...)
+	relations = append(relations, environmentResult.Relations...)
 	return domain.ScanDocument{
 		SchemaVersion: domain.SchemaVersion,
 		ToolVersion:   scanner.version,
@@ -135,7 +149,7 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		},
 		Projects:           correlationResult.Projects,
 		InstalledResources: correlationResult.Resources,
-		Relations:          correlationResult.Relations,
+		Relations:          relations,
 		Diagnostics:        diagnostics,
 	}
 }

@@ -99,10 +99,18 @@ func relationKey(relation domain.Relation) string {
 	return strings.Join([]string{
 		relation.ProjectID,
 		relation.RequirementID,
+		string(relationEnvironment(relation)),
 		stringValue(relation.ResourceID),
 		string(relation.MatchStatus),
 		relation.Rationale,
 	}, "\x00")
+}
+
+func relationEnvironment(relation domain.Relation) domain.ExecutionEnvironment {
+	if relation.Environment == "" {
+		return domain.EnvironmentHost
+	}
+	return relation.Environment
 }
 
 func sortEvidence(evidence []domain.Evidence) {

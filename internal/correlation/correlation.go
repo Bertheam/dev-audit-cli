@@ -140,6 +140,7 @@ func correlateRequirement(
 	relation := domain.Relation{
 		ProjectID:     project.ID,
 		RequirementID: requirement.ID,
+		Environment:   domain.EnvironmentHost,
 		MatchStatus:   domain.MatchUnknown,
 		Rationale:     "the requirement could not be correlated safely",
 		Evidence:      cloneEvidence(requirement.Evidence),
@@ -376,8 +377,8 @@ func sortResources(resources []domain.InstalledResource) {
 
 func sortRelations(relations []domain.Relation) {
 	sort.SliceStable(relations, func(left, right int) bool {
-		return relations[left].ProjectID+"\x00"+relations[left].RequirementID <
-			relations[right].ProjectID+"\x00"+relations[right].RequirementID
+		return relations[left].ProjectID+"\x00"+relations[left].RequirementID+"\x00"+string(relations[left].Environment) <
+			relations[right].ProjectID+"\x00"+relations[right].RequirementID+"\x00"+string(relations[right].Environment)
 	})
 }
 

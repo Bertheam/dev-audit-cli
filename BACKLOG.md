@@ -85,7 +85,8 @@ pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI
 
 ## Lot 6 — Validation
 
-- [ ] Construire un paquet macOS de test.
+- [x] Fournir un installateur local produisant la commande autonome `dev-audit`.
+- [ ] Construire un paquet macOS de test distribuable à d'autres machines.
 - [ ] Tester sur 10 à 15 machines avec vérité terrain.
 - [ ] Mesurer associations explicites, erreurs et utilité perçue.
 - [ ] Documenter la décision GO/PIVOT/STOP.
@@ -97,5 +98,6 @@ Retours du premier Mac :
 - [x] Rendre `scan` utilisable sans fournir manuellement les chemins.
 - [x] Ajouter une recherche profonde bornée et des signatures structurelles.
 - [x] Interdire `MISSING` et `NO_REFERENCE_FOUND` sur couverture heuristique.
-- [ ] Réduire le bruit des diagnostics de symlinks générés.
-- [ ] Distinguer une toolchain hôte d'une toolchain fournie par Docker.
+- [x] Réduire le bruit des diagnostics de symlinks à un résumé par racine.
+- [x] Distinguer une toolchain hôte d'une toolchain JDK déclarée par Docker.
+- [ ] Étendre prudemment l'analyse Docker aux toolchains non-Java pertinentes.

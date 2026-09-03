@@ -12,6 +12,7 @@ Arguments CLI
   -> auto-détection ou validation des racines et exclusions
   -> discovery
   -> analyzers
+  -> environment analyzers (Dockerfile statique)
   -> inventory adapters
   -> correlation
   -> evidence/confidence
@@ -46,8 +47,8 @@ une profondeur de 10.
 
 Les signatures exigent des marqueurs structurels : un SDK Android doit présenter
 au moins deux répertoires caractéristiques ; Flutter exige `bin/flutter` et
-`packages/flutter` ; un JDK exige `release`, `bin/java` et `bin/javac`. Les
-Le parcours profond ne suit pas les symlinks ; les chemins d'exécutables du
+`packages/flutter` ; un JDK exige `release`, `bin/java` et `bin/javac`. Le
+parcours profond ne suit pas les symlinks ; les chemins d'exécutables du
 `PATH` sont résolus puis validés par leurs marqueurs. Les caches de build,
 environnements virtuels et `testdata` sont ignorés. Les chemins trouvés et leur
 source sont exposés par diagnostics.
@@ -63,18 +64,23 @@ Une erreur partielle conserve les résultats des autres étapes.
 Une racine de projets auto-détectée rend volontairement incomplète la couverture
 de découverte pour la corrélation : aucun `NO_REFERENCE_FOUND` n'en découle. De
 même, une famille d'inventaire automatique n'autorise jamais `MISSING`. Une
-correspondance positive exacte reste possible dans les deux cas.
+correspondance positive exacte reste possible dans les deux cas. La corrélation
+des ressources installées produit uniquement des relations `HOST` ; les
+relations `DOCKER` proviennent de l'analyse déclarative séparée.
 
 ### `internal/domain`
 
 Contient les types `Scan`, `Project`, `Requirement`, `InstalledResource`,
-`Relation`, `Evidence` et `Diagnostic`, ainsi que leurs invariants.
+`Relation`, `Evidence` et `Diagnostic`, ainsi que leurs invariants. Une relation
+porte l'environnement `HOST` ou `DOCKER`. Pour compatibilité avec les premiers
+rapports JSON v1, l'absence du champ `environment` se lit comme `HOST`.
 
 ### `internal/discovery`
 
 Parcourt uniquement les racines autorisées. Il applique des exclusions, ne suit
 pas les symlinks et détecte les frontières de projets sans interpréter leurs
-versions.
+versions. Les liens ignorés produisent un résumé par racine, pas un diagnostic
+par entrée.
 
 Le Lot 1 utilise une interface de système de fichiers limitée à `Lstat` et
 `WalkDir`. Les valeurs par défaut bornent chaque racine à 250 000 entrées et une
@@ -109,6 +115,22 @@ n'interprètent pas Groovy ou Kotlin et ne résolvent pas une propriété arbitr
 Un alias de catalogue n'est retenu que lorsqu'un script l'utilise. Les preuves
 dynamiques sont minimisées pour éviter de recopier une variable d'environnement,
 une URL ou une expression potentiellement sensible.
+
+### `internal/environments`
+
+Analyse statiquement les environnements déclaratifs séparés de l'hôte. Le
+premier adaptateur parcourt les `Dockerfile` sous chaque projet avec des budgets
+de 50 000 entrées, 32 fichiers, une profondeur de 6 et 1 Mio par fichier. Il ne
+lance ni Docker ni une image.
+
+Les images Temurin, OpenJDK, Corretto, Gradle et Maven permettent actuellement
+d'extraire un niveau de fonctionnalité JDK. Une image `jre` n'est jamais traitée
+comme un JDK ; une variable d'image ou une version non statique reste inconnue.
+Une relation `DOCKER:MATCHED` prouve uniquement qu'un `FROM` déclaratif satisfait
+l'exigence. Elle n'a aucun `resource_id` et n'entre pas dans l'inventaire HOST.
+Le moteur ne produit pas encore de conclusion `DOCKER:MISSING`.
+Les symlinks restent ignorés silencieusement par cet adaptateur, car Discovery
+les a déjà comptés pour la même racine et possède le diagnostic de synthèse.
 
 ### `internal/inventory`
 

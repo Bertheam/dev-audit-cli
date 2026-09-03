@@ -82,6 +82,22 @@ projet, ni de faire confiance aux taps tiers MongoDB, ngrok ou Redis.
 
 Le binaire produit ne demandera pas à l'utilisateur final d'installer Go.
 
+### Installer la commande du produit
+
+Go n'est requis que pour construire depuis les sources. L'interface utilisateur
+est le binaire autonome `dev-audit`, installé depuis la racine du dépôt avec :
+
+```bash
+./scripts/install.sh
+dev-audit scan
+```
+
+Le script privilégie un dossier standard déjà dans le `PATH` et accessible sans
+`sudo`, accepte un dossier explicite en premier argument et se replie sur
+`~/.local/bin`. Sur le Mac de validation, il est installé dans
+`/opt/homebrew/bin`. Le scanner lui-même ne réalise aucune installation et ne
+modifie aucun projet audité.
+
 ## 5. Architecture
 
 ```text
@@ -249,6 +265,11 @@ désormais les racines omises depuis l'environnement, le `PATH`, les emplacement
 conventionnels et une recherche profonde bornée. Les options explicites restent
 disponibles et désactivent la détection pour leur famille. Pour préserver les
 invariants de corrélation, une couverture heuristique peut établir `MATCHED`,
-mais ne peut produire ni `MISSING` ni `NO_REFERENCE_FOUND`. Les prochaines
-validations devront aussi mesurer le bruit des symlinks et distinguer les
-toolchains de l'hôte de celles fournies par Docker.
+mais ne peut produire ni `MISSING` ni `NO_REFERENCE_FOUND`.
+
+La commande autonome s'installe via `scripts/install.sh`. Les diagnostics de
+symlinks sont regroupés par racine. Les relations distinguent `HOST` et
+`DOCKER` ; une lecture statique et bornée des `Dockerfile` peut établir qu'une
+image JDK déclarée correspond à l'exigence sans la présenter comme une
+installation locale ni lancer Docker. Sur le projet de validation Chambrage,
+Java 21 ressort ainsi `HOST:UNKNOWN` et `DOCKER:MATCHED`.

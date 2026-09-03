@@ -22,7 +22,7 @@
 4. Durée maximale imposée par la future CLI à chaque adaptateur.
 5. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
 6. Politique de compatibilité macOS du binaire distribué.
-7. Représentation des toolchains fournies par Docker par opposition à l'hôte.
+7. Étendue future de la détection Docker au-delà des images JDK reconnues.
 
 ## Clarifications appliquées
 
@@ -36,6 +36,10 @@
   `PATH`, les emplacements usuels et une recherche profonde bornée.
 - Une couverture automatique reste heuristique : elle autorise les
   correspondances positives, jamais `MISSING` ni `NO_REFERENCE_FOUND`.
+- Les relations portent `HOST` ou `DOCKER`. Un champ absent dans un ancien
+  rapport JSON v1 signifie `HOST`.
+- `DOCKER:MATCHED` décrit un `FROM` statique compatible ; il ne prouve ni une
+  image locale ni un conteneur actif et n'est jamais une ressource installée.
 - Un diagnostic `WARNING` ou `ERROR` rend incomplète la couverture de l'étape ou
   de la famille d'inventaire concernée ; cette règle privilégie les faux
   inconnus aux fausses certitudes.

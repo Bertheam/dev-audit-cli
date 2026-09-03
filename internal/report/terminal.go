@@ -23,7 +23,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	relations := make(map[string]domain.Relation, len(document.Relations))
 	resources := make(map[string]domain.InstalledResource, len(document.InstalledResources))
 	for _, relation := range document.Relations {
-		relations[relation.ProjectID+"\x00"+relation.RequirementID] = relation
+		relations[relationMapKey(relation.ProjectID, relation.RequirementID, relationEnvironment(relation))] = relation
 	}
 	for _, resource := range document.InstalledResources {
 		resources[resource.ID] = resource
@@ -38,13 +38,16 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	}
 
 	requirementCount := 0
-	matchCounts := map[domain.MatchStatus]int{}
+	matchCounts := map[domain.ExecutionEnvironment]map[domain.MatchStatus]int{
+		domain.EnvironmentHost:   {},
+		domain.EnvironmentDocker: {},
+	}
 	resourceCounts := map[domain.ReferenceStatus]int{}
 	for _, project := range document.Projects {
 		requirementCount += len(project.Requirements)
 	}
 	for _, relation := range document.Relations {
-		matchCounts[relation.MatchStatus]++
+		matchCounts[relationEnvironment(relation)][relation.MatchStatus]++
 	}
 	for _, resource := range document.InstalledResources {
 		resourceCounts[resource.ReferenceStatus]++
@@ -53,11 +56,8 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		"Summary: %d projects, %d requirements, %d resources, %d diagnostics\n",
 		len(document.Projects), requirementCount, len(document.InstalledResources), len(document.Diagnostics),
 	)
-	fmt.Fprintf(&output,
-		"Relations: MATCHED=%d MISSING=%d AMBIGUOUS=%d UNKNOWN=%d\n",
-		matchCounts[domain.Matched], matchCounts[domain.Missing],
-		matchCounts[domain.Ambiguous], matchCounts[domain.MatchUnknown],
-	)
+	writeRelationCounts(&output, domain.EnvironmentHost, matchCounts[domain.EnvironmentHost])
+	writeRelationCounts(&output, domain.EnvironmentDocker, matchCounts[domain.EnvironmentDocker])
 	fmt.Fprintf(&output,
 		"Resources: REFERENCED=%d NO_REFERENCE_FOUND=%d UNKNOWN=%d\n",
 		resourceCounts[domain.Referenced], resourceCounts[domain.NoReferenceFound],
@@ -75,12 +75,16 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 			continue
 		}
 		for _, requirement := range project.Requirements {
-			relation, exists := relations[project.ID+"\x00"+requirement.ID]
+			relation, exists := relations[relationMapKey(project.ID, requirement.ID, domain.EnvironmentHost)]
 			if !exists {
 				relation.MatchStatus = domain.MatchUnknown
 			}
-			fmt.Fprintf(&output, "    - [%s] %s/%s constraint=%s confidence=%s",
-				relation.MatchStatus,
+			dockerRelation, dockerExists := relations[relationMapKey(project.ID, requirement.ID, domain.EnvironmentDocker)]
+			fmt.Fprintf(&output, "    - [HOST:%s", relation.MatchStatus)
+			if dockerExists {
+				fmt.Fprintf(&output, " DOCKER:%s", dockerRelation.MatchStatus)
+			}
+			fmt.Fprintf(&output, "] %s/%s constraint=%s confidence=%s",
 				terminalValue(requirement.Ecosystem),
 				terminalValue(requirement.Component),
 				optionalTerminalValue(requirement.VersionConstraint),
@@ -97,7 +101,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		}
 	}
 
-	fmt.Fprintf(&output, "\nInstalled resources (%d):\n", len(document.InstalledResources))
+	fmt.Fprintf(&output, "\nInstalled HOST resources (%d):\n", len(document.InstalledResources))
 	if len(document.InstalledResources) == 0 {
 		output.WriteString("  (none)\n")
 	}
@@ -131,6 +135,23 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 
 	fmt.Fprintf(&output, "\nSafety: %s\n", safetyNotice)
 	return []byte(output.String()), nil
+}
+
+func writeRelationCounts(
+	output *strings.Builder,
+	environment domain.ExecutionEnvironment,
+	counts map[domain.MatchStatus]int,
+) {
+	fmt.Fprintf(output,
+		"Relations %s: MATCHED=%d MISSING=%d AMBIGUOUS=%d UNKNOWN=%d\n",
+		environment,
+		counts[domain.Matched], counts[domain.Missing],
+		counts[domain.Ambiguous], counts[domain.MatchUnknown],
+	)
+}
+
+func relationMapKey(projectID, requirementID string, environment domain.ExecutionEnvironment) string {
+	return projectID + "\x00" + requirementID + "\x00" + string(environment)
 }
 
 func terminalValue(value string) string {

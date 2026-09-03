@@ -57,6 +57,7 @@ func TestValidateJSONRejectsSchemaViolations(t *testing.T) {
 		{name: "additional property", content: bytes.Replace(valid, []byte(`"schema_version": "1.0"`), []byte(`"schema_version": "1.0", "extra": true`), 1)},
 		{name: "bad timestamp", content: bytes.Replace(valid, []byte(`"2026-09-02T20:00:00Z"`), []byte(`"not-a-time"`), 1)},
 		{name: "bad enum", content: bytes.Replace(valid, []byte(`"MATCHED"`), []byte(`"GUESSED"`), 1)},
+		{name: "Docker relation with HOST resource", content: bytes.Replace(valid, []byte(`"environment": "DOCKER",`), []byte(`"environment": "DOCKER", "resource_id": "resource-one",`), 1)},
 		{name: "trailing value", content: append(append([]byte(nil), valid...), []byte("{}")...)},
 	}
 	for _, test := range tests {
@@ -68,6 +69,25 @@ func TestValidateJSONRejectsSchemaViolations(t *testing.T) {
 	}
 }
 
+func TestLegacyRelationWithoutEnvironmentMeansHost(t *testing.T) {
+	content, err := RenderJSON(sampleDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := bytes.Replace(content, []byte("      \"environment\": \"HOST\",\n"), nil, 1)
+	document, err := DecodeJSON(legacy)
+	if err != nil {
+		t.Fatalf("legacy v1 relation should remain readable: %v", err)
+	}
+	rendered, err := RenderTerminal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(rendered, []byte("[HOST:MATCHED DOCKER:MATCHED]")) {
+		t.Fatalf("legacy relation was not interpreted as HOST:\n%s", rendered)
+	}
+}
+
 func TestExplainProjectRequirementAndResource(t *testing.T) {
 	document := sampleDocument()
 	tests := []struct {
@@ -75,7 +95,7 @@ func TestExplainProjectRequirementAndResource(t *testing.T) {
 		contains []string
 	}{
 		{id: "project-one", contains: []string{"Project \"project-one\"", "requirements (1)"}},
-		{id: "requirement-one", contains: []string{"Requirement \"requirement-one\"", "match: MATCHED", "test.rule"}},
+		{id: "requirement-one", contains: []string{"Requirement \"requirement-one\"", "HOST match: MATCHED", "DOCKER match: MATCHED", "test.rule"}},
 		{id: "resource-one", contains: []string{"Installed resource \"resource-one\"", "reference status: REFERENCED", "matched relations"}},
 	}
 	for _, test := range tests {
@@ -178,11 +198,21 @@ func sampleDocument() domain.ScanDocument {
 			{
 				ProjectID:     "project-one",
 				RequirementID: "requirement-one",
+				Environment:   domain.EnvironmentHost,
 				ResourceID:    &resourceID,
 				MatchStatus:   domain.Matched,
 				Rationale:     "one exact installed SDK satisfies the requirement",
 				Evidence:      evidence,
 				Warnings:      []string{},
+			},
+			{
+				ProjectID:     "project-one",
+				RequirementID: "requirement-one",
+				Environment:   domain.EnvironmentDocker,
+				MatchStatus:   domain.Matched,
+				Rationale:     "one Dockerfile declaration satisfies the requirement",
+				Evidence:      evidence,
+				Warnings:      []string{"declarative Docker match only"},
 			},
 		},
 		Diagnostics: []domain.Diagnostic{

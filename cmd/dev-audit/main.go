@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	version              = "0.0.0-lot5"
+	version              = "0.1.0-mvp"
 	defaultScanTimeout   = 30 * time.Second
 	maxInputReportBytes  = 64 << 20
 	exitSuccess          = 0

@@ -11,6 +11,7 @@ import (
 	"dev-environment-auditor/internal/application"
 	"dev-environment-auditor/internal/discovery"
 	"dev-environment-auditor/internal/domain"
+	"dev-environment-auditor/internal/environments"
 	"dev-environment-auditor/internal/inventory"
 	"dev-environment-auditor/internal/report"
 )
@@ -40,6 +41,7 @@ func TestScannerRunsReadOnlyPipelineAndProducesSchemaValidDocument(t *testing.T)
 	scanner := application.NewScannerWithAdapters(
 		discovery.New(discovery.OSFileSystem{}),
 		analyzers.New(analyzers.OSFileSystem{}),
+		environments.New(environments.OSFileSystem{}),
 		inventory.New(inventory.OSFileSystem{}),
 		clock,
 		"test-version",
@@ -169,6 +171,52 @@ func TestHeuristicProjectDiscoveryNeverProducesNoReferenceFound(t *testing.T) {
 	}
 	if !hasDiagnostic(document.Diagnostics, "AUTODETECT_ROOT_FOUND") {
 		t.Fatalf("pre-scan diagnostic was not preserved: %#v", document.Diagnostics)
+	}
+}
+
+func TestScannerSeparatesHostAndDockerJDKRelations(t *testing.T) {
+	projectRoot := t.TempDir()
+	for path, content := range map[string]string{
+		filepath.Join(projectRoot, "settings.gradle.kts"):                            "rootProject.name = \"api\"\n",
+		filepath.Join(projectRoot, "gradle", "wrapper", "gradle-wrapper.properties"): "distributionUrl=fixture\n",
+		filepath.Join(projectRoot, "build.gradle.kts"): `java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+`,
+		filepath.Join(projectRoot, "Dockerfile"): "FROM eclipse-temurin:21-jdk-alpine AS builder\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	document := application.NewScanner(application.SystemClock{}, "test-version").Scan(
+		context.Background(),
+		application.Config{ProjectRoots: []string{projectRoot}},
+	)
+	var hostStatus, dockerStatus domain.MatchStatus
+	for _, relation := range document.Relations {
+		if relation.Environment == domain.EnvironmentHost {
+			hostStatus = relation.MatchStatus
+		}
+		if relation.Environment == domain.EnvironmentDocker {
+			dockerStatus = relation.MatchStatus
+			if relation.ResourceID != nil {
+				t.Fatalf("Docker relation references a HOST resource: %#v", relation)
+			}
+		}
+	}
+	if hostStatus != domain.MatchUnknown || dockerStatus != domain.Matched {
+		t.Fatalf("expected HOST UNKNOWN and DOCKER MATCHED, got HOST %s DOCKER %s: %#v",
+			hostStatus, dockerStatus, document.Relations)
+	}
+	if _, err := report.RenderJSON(document); err != nil {
+		t.Fatalf("environment-aware report must satisfy schema: %v", err)
 	}
 }
 
