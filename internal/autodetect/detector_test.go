@@ -117,6 +117,43 @@ func TestDetectAndroidAVDUsesOfficialEnvironmentAndConventionOrder(t *testing.T)
 	}
 }
 
+func TestDetectXcodeUsesDeveloperDirAndAppleDeveloperConvention(t *testing.T) {
+	home := t.TempDir()
+	xcode := filepath.Join(home, "Applications", "Xcode-Beta.app")
+	createXcodeApplication(t, xcode)
+	appleDeveloper := filepath.Join(home, "Library", "Developer")
+	createDirectory(t, filepath.Join(appleDeveloper, "CoreSimulator"))
+
+	detector := NewWithAdapters(osFileSystem{}, fakeEnvironment{
+		home:       home,
+		workingDir: home,
+		variables: map[string]string{
+			"DEVELOPER_DIR": filepath.Join(xcode, "Contents", "Developer"),
+		},
+		executables: map[string]string{},
+	}, "test")
+	result := detector.Detect(context.Background(), Config{NeedXcode: true, DeepSearch: false})
+
+	assertPaths(t, result.Roots.XcodeRoots, xcode)
+	assertPaths(t, result.Roots.AppleDeveloperRoots, appleDeveloper)
+	assertFamilies(t, result.HeuristicInventoryFamilies, FamilyApple)
+	if countDiagnostic(result.Diagnostics, "AUTODETECT_ROOT_FOUND") != 2 {
+		t.Fatalf("unexpected Apple detection diagnostics: %#v", result.Diagnostics)
+	}
+}
+
+func TestDetectXcodeDeepSearchFindsNonstandardApplication(t *testing.T) {
+	home := t.TempDir()
+	xcode := filepath.Join(home, "Documents", "toolchains", "Xcode-CI.app")
+	createXcodeApplication(t, xcode)
+	detector := NewWithAdapters(osFileSystem{}, fakeEnvironment{
+		home: home, workingDir: home, variables: map[string]string{}, executables: map[string]string{},
+	}, "test")
+
+	result := detector.Detect(context.Background(), Config{NeedXcode: true, DeepSearch: true})
+	assertPaths(t, result.Roots.XcodeRoots, xcode)
+}
+
 func TestDetectAndroidAVDDeepSearchFindsNonstandardRoot(t *testing.T) {
 	home := t.TempDir()
 	avdRoot := filepath.Join(home, "Documents", "emulators", "profiles")
@@ -297,6 +334,12 @@ func createJDK(t *testing.T, root string) {
 	writeFile(t, filepath.Join(root, "release"), "JAVA_VERSION=\"21\"\n")
 	writeFile(t, filepath.Join(root, "bin", "java"), "fixture\n")
 	writeFile(t, filepath.Join(root, "bin", "javac"), "fixture\n")
+}
+
+func createXcodeApplication(t *testing.T, root string) {
+	t.Helper()
+	createDirectory(t, filepath.Join(root, "Contents", "Developer", "Platforms"))
+	createDirectory(t, filepath.Join(root, "Contents", "Developer", "Toolchains"))
 }
 
 func createDirectory(t *testing.T, path string) {

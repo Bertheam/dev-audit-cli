@@ -34,6 +34,42 @@ func (inventory *Inventory) addMeasuredResource(
 	builder *resourceBuilder,
 	result *Result,
 ) {
+	inventory.addMeasuredResourceWithVersionPolicy(
+		ctx, ecosystem, component, version, resourcePath, metadata, warnings,
+		true, limits, builder, result,
+	)
+}
+
+func (inventory *Inventory) addMeasuredUnversionedResource(
+	ctx context.Context,
+	ecosystem string,
+	component string,
+	resourcePath string,
+	metadata []domain.MetadataEntry,
+	warnings []string,
+	limits Limits,
+	builder *resourceBuilder,
+	result *Result,
+) {
+	inventory.addMeasuredResourceWithVersionPolicy(
+		ctx, ecosystem, component, nil, resourcePath, metadata, warnings,
+		false, limits, builder, result,
+	)
+}
+
+func (inventory *Inventory) addMeasuredResourceWithVersionPolicy(
+	ctx context.Context,
+	ecosystem string,
+	component string,
+	version *string,
+	resourcePath string,
+	metadata []domain.MetadataEntry,
+	warnings []string,
+	warnMissingVersion bool,
+	limits Limits,
+	builder *resourceBuilder,
+	result *Result,
+) {
 	if builder.len() >= limits.MaxResources {
 		result.Diagnostics = append(result.Diagnostics, newDiagnostic(
 			"INVENTORY_MAX_RESOURCES_REACHED",
@@ -60,7 +96,7 @@ func (inventory *Inventory) addMeasuredResource(
 	if !measurement.complete {
 		warnings = append(warnings, "logical size is unavailable because measurement was incomplete")
 	}
-	if version == nil {
+	if version == nil && warnMissingVersion {
 		warnings = append(warnings, "version could not be determined statically")
 	}
 	builder.add(ecosystem, component, version, resourcePath, measurement.size, metadata, warnings)

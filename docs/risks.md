@@ -19,6 +19,9 @@
 | Sortie Docker volumineuse ou lente | Scan bloqué ou mémoire excessive | Timeout par commande, timeout global, sortie bornée et budget de ressources. |
 | Métadonnées Docker sensibles | Fuite de commandes, variables ou labels | Demander uniquement ID, référence, état, tailles et dates ; ne jamais collecter commandes, labels, env ou montages. |
 | AVD volumineux mais encore utile | Perte de données d'émulateur ou de scénario de test | Marquer l'AVD sensible et `UNKNOWN` ; ne jamais déduire une action de sa taille seule. |
+| Simulateur iOS booté ou contenant des données utiles | Perte d'état applicatif, de tests ou de diagnostics | Marquer chaque appareil CoreSimulator sensible et `UNKNOWN` ; aucune action Apple dans le plan. |
+| Runtime Xcode en cours de téléchargement ou d'installation | Corruption d'un composant et indisponibilité de la plateforme | Considérer tout téléchargement observable comme potentiellement actif ; ne jamais modifier les composants et différer le gate réel. |
+| Taille Xcode/CoreSimulator lente à mesurer | Dépassement du timeout ou rapport incomplet | Réutiliser les budgets de parcours ; ne publier aucune taille partielle et conserver un diagnostic. |
 | Ancienneté déduite d'un `mtime` ou d'une création | Faux classement d'une ressource encore utile | Accepter uniquement une dernière utilisation allowlistée et enregistrer le seuil appliqué. |
 | `NO_REFERENCE_FOUND` présenté comme inutilisé | Suppression d'une ressource utile hors couverture | Exiger aussi reconstruction prouvée et ancienneté fiable pour `ORPHELINE_PROBABLE` ; sinon conserver `INCONNUE`. |
 | Tailles Docker partagées additionnées | Surestimation de l'espace récupérable | Séparer taille observée et estimation potentielle ; exclure cache partagé ou mutable et ne pas publier de total garanti. |

@@ -2,8 +2,9 @@
 
 ## Contexte
 
-La Phase 0 est une CLI macOS locale pour Flutter, Android et Docker. Elle produit
-des observations vérifiables sans modifier les projets ni les toolchains.
+La Phase 0 est une CLI macOS locale pour Flutter, Android, Docker et les
+ressources Xcode/iOS. Elle produit des observations vérifiables sans modifier
+les projets ni les toolchains.
 
 ## Flux principal
 
@@ -59,8 +60,11 @@ restent un gate obligatoire avant une diffusion publique.
 ### `internal/autodetect`
 
 Détecte sans sous-processus les projets, Android SDK, Flutter/FVM, Gradle User
-Home et JDK. La première passe utilise les variables connues, le `PATH` et les
-emplacements conventionnels. Une seconde passe optionnelle parcourt des dossiers
+Home, JDK, applications Xcode et racines Apple Developer. La première passe
+utilise les variables connues, le `PATH` et les emplacements conventionnels.
+Pour Apple, elle normalise `DEVELOPER_DIR`, inspecte les applications
+`Xcode*.app` et valide `~/Library/Developer` et `/Library/Developer`. Une seconde
+passe optionnelle parcourt des dossiers
 de développement bornés à 250 000 entrées par emplacement, 750 000 au total et
 une profondeur de 10.
 
@@ -182,10 +186,18 @@ soient explicites ou détectés. La mesure de taille possède des limites de tem
 de profondeur et de nombre d'entrées.
 
 Le moteur d'inventaire exige toujours des racines typées ; leur déduction est la
-responsabilité de `internal/autodetect` et de la CLI. Il reconnaît les
-paquets Android structurés, les SDK Flutter directs ou sous FVM, les
-distributions Wrapper et plugins AGP/Kotlin du cache Gradle, et les JDK via leurs
-métadonnées statiques. Aucun gestionnaire ni exécutable inventorié n'est lancé.
+responsabilité de `internal/autodetect` et de la CLI. Il reconnaît les paquets
+Android structurés, les SDK Flutter directs ou sous FVM, les distributions
+Wrapper et plugins AGP/Kotlin du cache Gradle, les JDK via leurs métadonnées
+statiques, ainsi que Xcode, DerivedData, Device Support, CoreSimulator et les
+Command Line Tools. Aucun gestionnaire ni exécutable inventorié n'est lancé.
+
+Les appareils CoreSimulator portent une sensibilité explicite et un état
+d'activité `unknown`; les téléchargements de composants visibles portent
+`unknown_may_be_in_progress`. Les plist XML bornées servent uniquement à lire
+des clés allowlistées. Un plist binaire ou malformé ne déclenche aucune
+interprétation de remplacement. Ce lot n'appelle ni Xcode, ni `xcodebuild`, ni
+`simctl`, et n'ajoute aucune action Apple au plan simulé.
 
 La métrique `size_bytes` est la somme logique des fichiers réguliers. Les
 symlinks ne sont pas suivis. Dès qu'une permission, une limite ou l'annulation
@@ -231,8 +243,9 @@ heuristique.
 Applique après corrélation des catégories multiples, déterministes et
 accompagnées de preuves. `UTILISEE` exige une relation positive ou un état de
 conteneur actif observé. `RECONSTRUCTIBLE` exige un chemin de reconstruction
-identifiable : paquet `sdkmanager`, cache FVM versionné, cache Gradle ou cache
-BuildKit. `SENSIBLE` dérive uniquement d'une métadonnée de sensibilité explicite.
+identifiable : paquet `sdkmanager`, cache FVM versionné, cache Gradle, DerivedData
+Xcode ou cache BuildKit. `SENSIBLE` dérive uniquement d'une métadonnée de
+sensibilité explicite.
 
 `ANCIENNE` compare une preuve fiable de dernière utilisation au seuil
 `--old-after-days`, enregistré dans le rapport. Le moteur n'accepte actuellement

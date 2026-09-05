@@ -15,6 +15,8 @@
 - Un AVD peut contenir des données applicatives mutables ; sa présence, sa
   taille ou son ancienneté apparente ne suffisent jamais à autoriser son
   nettoyage.
+- Un appareil CoreSimulator peut contenir des données mutables ; sans requête
+  explicite à CoreSimulator, son état d'activité reste inconnu.
 
 ## Décisions ouvertes avant publication
 
@@ -81,3 +83,10 @@
   aucune primitive d'exécution n'existe dans le Lot 10.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.
+- La détection Apple du Lot 11 est « filesystem-first » : `DEVELOPER_DIR`, les
+  bundles Xcode et les racines Developer sont lus sans lancer `xcodebuild` ou
+  `simctl`. Un téléchargement visible est protégé comme potentiellement actif ;
+  l'absence de marqueur ne prouve pas qu'aucune opération Xcode n'est en cours.
+- DerivedData est reconstructible mais reste `INCONNUE` faute de preuve fiable
+  d'usage. Les runtimes, Device Support, appareils simulés et installations
+  Xcode ne reçoivent aucune action de planification dans ce lot.

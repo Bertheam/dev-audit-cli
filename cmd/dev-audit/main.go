@@ -21,7 +21,7 @@ import (
 	"dev-environment-auditor/internal/report"
 )
 
-var version = "0.2.0-dev"
+var version = "0.3.0-dev"
 
 const (
 	defaultScanTimeout   = 30 * time.Second
@@ -209,6 +209,8 @@ func runScan(
 	var fvmRoots stringListFlag
 	var gradleRoots stringListFlag
 	var jdkRoots stringListFlag
+	var xcodeRoots stringListFlag
+	var appleDeveloperRoots stringListFlag
 	var format string
 	var outputPath string
 	var timeout time.Duration
@@ -224,6 +226,8 @@ func runScan(
 	flags.Var(&fvmRoots, "fvm-cache-root", "FVM cache root whose children are SDKs; repeatable")
 	flags.Var(&gradleRoots, "gradle-user-home", "Gradle user-home inventory root; repeatable")
 	flags.Var(&jdkRoots, "jdk-root", "JDK home or macOS JDK container root; repeatable")
+	flags.Var(&xcodeRoots, "xcode-root", "Xcode application root; repeatable")
+	flags.Var(&appleDeveloperRoots, "apple-developer-root", "Apple Developer data root, such as ~/Library/Developer; repeatable")
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
 	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
@@ -263,6 +267,7 @@ func runScan(
 	projectDiscoveryHeuristic := false
 	if autoDetect && dependencies.detect != nil {
 		needFlutterFamily := len(flutterRoots)+len(fvmRoots) == 0
+		needAppleFamily := len(xcodeRoots)+len(appleDeveloperRoots) == 0
 		detected := dependencies.detect(ctx, autodetect.Config{
 			NeedProjectRoots: len(projectRoots) == 0,
 			NeedAndroid:      len(androidRoots) == 0,
@@ -271,6 +276,7 @@ func runScan(
 			NeedFVM:          needFlutterFamily,
 			NeedGradle:       len(gradleRoots) == 0,
 			NeedJDK:          len(jdkRoots) == 0,
+			NeedXcode:        needAppleFamily,
 			DeepSearch:       deepSearch,
 		})
 		preScanDiagnostics = append(preScanDiagnostics, detected.Diagnostics...)
@@ -294,6 +300,10 @@ func runScan(
 		if len(jdkRoots) == 0 {
 			jdkRoots = append(jdkRoots, detected.Roots.JDKRoots...)
 		}
+		if needAppleFamily {
+			xcodeRoots = append(xcodeRoots, detected.Roots.XcodeRoots...)
+			appleDeveloperRoots = append(appleDeveloperRoots, detected.Roots.AppleDeveloperRoots...)
+		}
 		for _, family := range detected.HeuristicInventoryFamilies {
 			heuristicInventoryFamilies = append(heuristicInventoryFamilies, string(family))
 		}
@@ -316,6 +326,8 @@ func runScan(
 		FVMCacheRoots:              []string(fvmRoots),
 		GradleUserHomeRoots:        []string(gradleRoots),
 		JDKRoots:                   []string(jdkRoots),
+		XcodeRoots:                 []string(xcodeRoots),
+		AppleDeveloperRoots:        []string(appleDeveloperRoots),
 		DockerInventory:            dockerInventory,
 		OldAfterDays:               oldAfterDays,
 		PreScanDiagnostics:         preScanDiagnostics,

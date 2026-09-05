@@ -1,4 +1,4 @@
-// Package inventory records locally installed Flutter, Android and JDK
+// Package inventory records locally installed Flutter, Android, Apple and JDK
 // resources from explicit, typed roots without invoking package managers.
 package inventory
 
@@ -41,6 +41,8 @@ type Config struct {
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
 	JDKRoots            []string
+	XcodeRoots          []string
+	AppleDeveloperRoots []string
 	Limits              Limits
 }
 
@@ -107,6 +109,8 @@ func (inventory *Inventory) Inspect(ctx context.Context, config Config) Result {
 		{kind: rootFVMCache, paths: config.FVMCacheRoots},
 		{kind: rootGradleUserHome, paths: config.GradleUserHomeRoots},
 		{kind: rootJDK, paths: config.JDKRoots},
+		{kind: rootXcode, paths: config.XcodeRoots},
+		{kind: rootAppleDeveloper, paths: config.AppleDeveloperRoots},
 	}
 
 	for _, group := range groups {
@@ -145,6 +149,10 @@ func (inventory *Inventory) Inspect(ctx context.Context, config Config) Result {
 				inventory.inspectGradleUserHome(ctx, root, limits, builder, &result)
 			case rootJDK:
 				inventory.inspectJDKRoot(ctx, root, limits, builder, &result)
+			case rootXcode:
+				inventory.inspectXcodeRoot(ctx, root, limits, builder, &result)
+			case rootAppleDeveloper:
+				inventory.inspectAppleDeveloperRoot(ctx, root, limits, builder, &result)
 			}
 		}
 	}
@@ -164,11 +172,14 @@ const (
 	rootFVMCache       rootKind = "fvm_cache"
 	rootGradleUserHome rootKind = "gradle_user_home"
 	rootJDK            rootKind = "jdk"
+	rootXcode          rootKind = "xcode"
+	rootAppleDeveloper rootKind = "apple_developer"
 )
 
 func totalConfiguredRoots(config Config) int {
 	return len(config.AndroidSDKRoots) + len(config.AndroidAVDRoots) + len(config.FlutterSDKRoots) +
-		len(config.FVMCacheRoots) + len(config.GradleUserHomeRoots) + len(config.JDKRoots)
+		len(config.FVMCacheRoots) + len(config.GradleUserHomeRoots) + len(config.JDKRoots) +
+		len(config.XcodeRoots) + len(config.AppleDeveloperRoots)
 }
 
 func normalizeLimits(limits Limits) Limits {

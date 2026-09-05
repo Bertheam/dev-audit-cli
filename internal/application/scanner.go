@@ -37,6 +37,8 @@ type Config struct {
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
 	JDKRoots            []string
+	XcodeRoots          []string
+	AppleDeveloperRoots []string
 	DockerInventory     bool
 	OldAfterDays        int
 	PreScanDiagnostics  []domain.Diagnostic
@@ -267,6 +269,15 @@ func (scanner *Scanner) inspectInventory(
 			scopes: []correlation.InventoryScope{
 				{Ecosystem: "java", Component: "jdk"},
 			},
+		},
+		{
+			family:     "apple",
+			configured: len(config.XcodeRoots)+len(config.AppleDeveloperRoots) > 0,
+			config: inventory.Config{
+				XcodeRoots:          cloneStrings(config.XcodeRoots),
+				AppleDeveloperRoots: cloneStrings(config.AppleDeveloperRoots),
+			},
+			scopes: nil,
 		},
 	}
 

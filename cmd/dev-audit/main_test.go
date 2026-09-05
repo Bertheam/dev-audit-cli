@@ -67,6 +67,8 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 		"--fvm-cache-root", "/cache/fvm",
 		"--gradle-user-home", "/cache/gradle",
 		"--jdk-root", "/jdks",
+		"--xcode-root", "/Applications/Xcode.app",
+		"--apple-developer-root", "/Users/test/Library/Developer",
 		"--format", "json",
 		"--timeout", "2s",
 		"--old-after-days", "90",
@@ -82,7 +84,8 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 		t.Fatalf("project roots not forwarded: %#v", captured)
 	}
 	if len(captured.AndroidSDKRoots) != 1 || len(captured.AndroidAVDRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
-		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 || len(captured.JDKRoots) != 1 {
+		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 || len(captured.JDKRoots) != 1 ||
+		len(captured.XcodeRoots) != 1 || len(captured.AppleDeveloperRoots) != 1 {
 		t.Fatalf("typed inventory roots not forwarded: %#v", captured)
 	}
 	if !captured.DockerInventory {
@@ -106,7 +109,7 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 		detect: func(_ context.Context, config autodetect.Config) autodetect.Result {
 			detectionCalled = true
 			if !config.NeedProjectRoots || !config.NeedAndroid || !config.NeedAndroidAVD || !config.NeedFlutter ||
-				!config.NeedFVM || !config.NeedGradle || !config.NeedJDK || !config.DeepSearch {
+				!config.NeedFVM || !config.NeedGradle || !config.NeedJDK || !config.NeedXcode || !config.DeepSearch {
 				t.Fatalf("unexpected detection config: %#v", config)
 			}
 			path := "/detected/projects"
@@ -119,6 +122,8 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 					FVMCacheRoots:       []string{"/detected/fvm"},
 					GradleUserHomeRoots: []string{"/detected/gradle"},
 					JDKRoots:            []string{"/detected/jdk"},
+					XcodeRoots:          []string{"/detected/Xcode.app"},
+					AppleDeveloperRoots: []string{"/detected/Library/Developer"},
 				},
 				Diagnostics: []domain.Diagnostic{{
 					Code:     "AUTODETECT_ROOT_FOUND",
@@ -133,6 +138,7 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 					autodetect.FamilyFlutter,
 					autodetect.FamilyGradle,
 					autodetect.FamilyJava,
+					autodetect.FamilyApple,
 				},
 				ProjectDiscoveryHeuristic: true,
 			}
@@ -158,10 +164,10 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 	if len(captured.ProjectRoots) != 1 || captured.ProjectRoots[0] != "/detected/projects" ||
 		len(captured.AndroidSDKRoots) != 1 || len(captured.AndroidAVDRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
 		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 ||
-		len(captured.JDKRoots) != 1 {
+		len(captured.JDKRoots) != 1 || len(captured.XcodeRoots) != 1 || len(captured.AppleDeveloperRoots) != 1 {
 		t.Fatalf("detected roots not forwarded: %#v", captured)
 	}
-	if !captured.ProjectDiscoveryHeuristic || len(captured.HeuristicInventoryFamilies) != 5 {
+	if !captured.ProjectDiscoveryHeuristic || len(captured.HeuristicInventoryFamilies) != 6 {
 		t.Fatalf("heuristic coverage not forwarded: %#v", captured)
 	}
 	if len(captured.PreScanDiagnostics) != 1 || captured.PreScanDiagnostics[0].Code != "AUTODETECT_ROOT_FOUND" {

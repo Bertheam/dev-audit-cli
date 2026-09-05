@@ -196,3 +196,25 @@ ciblé. Les empreintes des images, conteneurs et enregistrements BuildKit
 normalisés sont restées identiques avant et après la simulation. Tests avec
 détecteur de concurrence, `go vet`, schéma embarqué et installation réelle de
 `dev-audit` réussis.
+
+### Lot 11 — Inventaire Xcode/iOS en lecture seule
+
+- [x] Détecter `DEVELOPER_DIR`, les applications `Xcode*.app` standards et non
+  standards, `~/Library/Developer` et `/Library/Developer`.
+- [x] Inventorier séparément Xcode, DerivedData, iOS Device Support, runtimes
+  CoreSimulator, appareils simulés, composants en téléchargement et Command
+  Line Tools.
+- [x] Lire uniquement des clés plist allowlistées et bornées, sans appeler
+  Xcode, `xcodebuild` ou `simctl`.
+- [x] Marquer les données de simulateur sensibles et leur activité inconnue.
+- [x] Bloquer toute action Apple dans le plan simulé ; DerivedData est seulement
+  classé reconstructible et inconnu.
+- [x] Valider déterminisme, tailles logiques, budgets, symlinks et invariance
+  des fixtures.
+- [ ] Exécuter le gate réel sur le Mac 01 après la fin du téléchargement du
+  runtime iOS 26.5 par Xcode.
+- [ ] Comparer l'inventaire au panneau Xcode Settings > Components et au Device
+  Hub, sans lancer ni supprimer de simulateur.
+
+Implémentation terminée sur fixtures ; validation réelle volontairement différée
+pour ne pas interférer avec l'installation actuellement active du runtime.

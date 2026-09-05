@@ -47,6 +47,24 @@ func TestApplyKeepsSensitiveAVDUsageUnknown(t *testing.T) {
 	}
 }
 
+func TestApplyClassifiesXcodeDerivedDataAndProtectsSimulatorData(t *testing.T) {
+	result := Apply([]domain.InstalledResource{
+		{
+			ID: "derived", Ecosystem: "apple", Component: "xcode_derived_data", Path: "/DerivedData/App",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Metadata:        []domain.MetadataEntry{{Key: "inventory_source", Value: "xcode_derived_data"}},
+		},
+		{
+			ID: "simulator", Ecosystem: "apple", Component: "apple_simulator_device", Path: "/CoreSimulator/Devices/id",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Metadata:        []domain.MetadataEntry{{Key: "sensitivity", Value: "sensitive_mutable_user_data"}},
+		},
+	}, Config{EvaluatedAt: mustTime(t, "2026-09-05T12:00:00Z")})
+
+	assertCategories(t, result.Resources[0], domain.CategoryReconstructible, domain.CategoryUnknown)
+	assertCategories(t, result.Resources[1], domain.CategorySensitive, domain.CategoryUnknown)
+}
+
 func TestApplyUsesOnlyTrustedLastUseAndConservativeDockerSpace(t *testing.T) {
 	size := int64(829_889_526)
 	resource := domain.InstalledResource{

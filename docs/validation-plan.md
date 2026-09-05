@@ -8,7 +8,8 @@ inventaire de stockage, sans effectuer de changement sur les machines testées.
 ## Échantillon
 
 Recruter 10 à 15 développeurs macOS possédant plusieurs projets Flutter/Android,
-des versions historiques et des configurations Groovy ou Kotlin DSL variées.
+des versions historiques, des configurations Groovy ou Kotlin DSL variées et,
+si possible, plusieurs runtimes ou simulateurs Xcode.
 
 ## Préparation
 
@@ -34,6 +35,9 @@ des versions historiques et des configurations Groovy ou Kotlin DSL variées.
    estimation, projets affectés et commande ciblée, sans exécuter celle-ci.
 8. Confirmer que projets, configurations, toolchains et état Docker n'ont pas
    été modifiés.
+9. Sur les Macs équipés de Xcode, comparer les runtimes et simulateurs observés
+   au panneau Components et au Device Hub, uniquement lorsqu'aucun composant
+   n'est en cours d'installation.
 
 ## Mesures
 

@@ -128,6 +128,11 @@ func classifyReconstructible(resource *domain.InstalledResource) bool {
 		evidence = []domain.Evidence{
 			metadataEvidence("docker buildx du", "management", management, "classification.reconstructible.docker-build-cache.v1"),
 		}
+	case resource.Ecosystem == "apple" && resource.Component == "xcode_derived_data" && source == "xcode_derived_data":
+		rationale = "The resource is generated Xcode build and index data; source projects can regenerate it."
+		evidence = []domain.Evidence{
+			metadataEvidence("inventory", "inventory_source", source, "classification.reconstructible.xcode-derived-data.v1"),
+		}
 	default:
 		return false
 	}

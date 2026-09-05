@@ -33,6 +33,7 @@ const (
 	FamilyFlutter    Family = "flutter"
 	FamilyGradle     Family = "gradle"
 	FamilyJava       Family = "java"
+	FamilyApple      Family = "apple"
 )
 
 type Limits struct {
@@ -49,6 +50,7 @@ type Config struct {
 	NeedFVM          bool
 	NeedGradle       bool
 	NeedJDK          bool
+	NeedXcode        bool
 	DeepSearch       bool
 	Limits           Limits
 }
@@ -61,6 +63,8 @@ type Roots struct {
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
 	JDKRoots            []string
+	XcodeRoots          []string
+	AppleDeveloperRoots []string
 }
 
 type Result struct {
@@ -106,6 +110,8 @@ type locatedRoots struct {
 	fvm      map[string]string
 	gradle   map[string]string
 	jdk      map[string]string
+	xcode    map[string]string
+	appleDev map[string]string
 }
 
 func newLocatedRoots() *locatedRoots {
@@ -117,6 +123,8 @@ func newLocatedRoots() *locatedRoots {
 		fvm:      make(map[string]string),
 		gradle:   make(map[string]string),
 		jdk:      make(map[string]string),
+		xcode:    make(map[string]string),
+		appleDev: make(map[string]string),
 	}
 }
 
@@ -183,6 +191,8 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 		FVMCacheRoots:       sortedKeys(located.fvm),
 		GradleUserHomeRoots: sortedKeys(located.gradle),
 		JDKRoots:            sortedKeys(located.jdk),
+		XcodeRoots:          sortedKeys(located.xcode),
+		AppleDeveloperRoots: sortedKeys(located.appleDev),
 	}
 
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("project", located.projects)...)
@@ -192,6 +202,8 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("fvm", located.fvm)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("gradle", located.gradle)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("java", located.jdk)...)
+	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("xcode", located.xcode)...)
+	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("apple-developer", located.appleDev)...)
 
 	requestedFamilies := []struct {
 		needed bool
@@ -203,6 +215,7 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 		{config.NeedFlutter || config.NeedFVM, FamilyFlutter, append(cloneStrings(result.Roots.FlutterSDKRoots), result.Roots.FVMCacheRoots...)},
 		{config.NeedGradle, FamilyGradle, result.Roots.GradleUserHomeRoots},
 		{config.NeedJDK, FamilyJava, result.Roots.JDKRoots},
+		{config.NeedXcode, FamilyApple, append(cloneStrings(result.Roots.XcodeRoots), result.Roots.AppleDeveloperRoots...)},
 	}
 	for _, requested := range requestedFamilies {
 		if !requested.needed {
@@ -373,6 +386,22 @@ func (detector *Detector) detectEnvironmentAndConventions(
 			detector.addApplicationJDKs(located.jdk, filepath.Join(home, "Applications"))
 			detector.addHomebrewJDKs(located.jdk, "/opt/homebrew/Cellar")
 			detector.addHomebrewJDKs(located.jdk, "/usr/local/Cellar")
+		}
+	}
+
+	if config.NeedXcode {
+		if value, ok := detector.environment.LookupEnv("DEVELOPER_DIR"); ok {
+			detector.addXcodeRoot(located.xcode, value, "DEVELOPER_DIR")
+		}
+		detector.addAppleDeveloperRoot(
+			located.appleDev,
+			filepath.Join(home, "Library", "Developer"),
+			"conventional location",
+		)
+		if detector.goos == "darwin" {
+			detector.addApplicationXcodes(located.xcode, "/Applications", "macOS Applications")
+			detector.addApplicationXcodes(located.xcode, filepath.Join(home, "Applications"), "user Applications")
+			detector.addAppleDeveloperRoot(located.appleDev, "/Library/Developer", "conventional location")
 		}
 	}
 }
@@ -553,6 +582,11 @@ func (detector *Detector) detectLikelyDirectory(
 	}
 	if config.NeedFVM && (lowerName == "versions" || lowerName == "cache") {
 		if detector.addFVMRoot(located.fvm, path, "bounded deep search") {
+			return true
+		}
+	}
+	if config.NeedXcode && strings.HasPrefix(lowerName, "xcode") && strings.HasSuffix(lowerName, ".app") {
+		if detector.addXcodeRoot(located.xcode, path, "bounded deep search") {
 			return true
 		}
 	}
@@ -789,6 +823,46 @@ func (detector *Detector) addJDKRoot(roots map[string]string, candidate, source 
 	return false
 }
 
+func (detector *Detector) addXcodeRoot(roots map[string]string, candidate, source string) bool {
+	candidate = detector.canonicalCandidate(candidate)
+	if candidate == "" {
+		return false
+	}
+	if filepath.Base(candidate) == "Developer" && filepath.Base(filepath.Dir(candidate)) == "Contents" {
+		candidate = filepath.Dir(filepath.Dir(candidate))
+	}
+	if !detector.isXcodeApplication(candidate) {
+		return false
+	}
+	detector.addLocated(roots, candidate, source)
+	return true
+}
+
+func (detector *Detector) addApplicationXcodes(roots map[string]string, applicationsRoot, source string) {
+	applicationsRoot = detector.canonicalCandidate(applicationsRoot)
+	entries, err := detector.fileSystem.ReadDir(applicationsRoot)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		lowerName := strings.ToLower(entry.Name())
+		if entry.Type()&fs.ModeSymlink != 0 || !entry.IsDir() ||
+			!strings.HasPrefix(lowerName, "xcode") || !strings.HasSuffix(lowerName, ".app") {
+			continue
+		}
+		detector.addXcodeRoot(roots, filepath.Join(applicationsRoot, entry.Name()), source)
+	}
+}
+
+func (detector *Detector) addAppleDeveloperRoot(roots map[string]string, candidate, source string) bool {
+	candidate = detector.canonicalCandidate(candidate)
+	if candidate == "" || !detector.isAppleDeveloperRoot(candidate) {
+		return false
+	}
+	detector.addLocated(roots, candidate, source)
+	return true
+}
+
 func (detector *Detector) addJDKContainer(roots map[string]string, container, source string) {
 	container = detector.canonicalCandidate(container)
 	entries, err := detector.fileSystem.ReadDir(container)
@@ -996,6 +1070,21 @@ func (detector *Detector) isJDKHome(root string) bool {
 	return detector.isRegularFile(filepath.Join(root, "release")) &&
 		detector.isRegularFile(filepath.Join(root, "bin", "java")) &&
 		detector.isRegularFile(filepath.Join(root, "bin", "javac"))
+}
+
+func (detector *Detector) isXcodeApplication(root string) bool {
+	developer := filepath.Join(root, "Contents", "Developer")
+	return detector.isDirectory(filepath.Join(developer, "Platforms")) &&
+		detector.isDirectory(filepath.Join(developer, "Toolchains"))
+}
+
+func (detector *Detector) isAppleDeveloperRoot(root string) bool {
+	for _, directory := range []string{"Xcode", "CoreSimulator", "Packages", "CommandLineTools"} {
+		if detector.isDirectory(filepath.Join(root, directory)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (detector *Detector) isDirectory(path string) bool {

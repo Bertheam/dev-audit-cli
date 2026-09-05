@@ -410,3 +410,30 @@ simulation manuelle d'un cache BuildKit `INCONNUE` a exposé son estimation de
 48 670 000 octets et le filtre ciblé attendu. Les empreintes Docker normalisées
 sont restées inchangées. Tests `-race`, couverture, `go vet`, installation dans
 `/opt/homebrew/bin` et exécution par `dev-audit plan` ont réussi.
+
+## 19. Lot 11 — inventaire Xcode/iOS filesystem-first
+
+La famille Apple est désormais auto-détectée sans exécuter les outils Xcode.
+`DEVELOPER_DIR` est normalisé vers son bundle, les applications `Xcode*.app`
+sont validées par leurs répertoires Platforms et Toolchains, et les racines
+Developer utilisateur et système utilisent des marqueurs structurels. La
+recherche profonde bornée peut retrouver un bundle Xcode non standard sans
+entrer dans son contenu une fois identifié.
+
+L'inventaire sépare l'application Xcode, DerivedData, iOS Device Support, les
+runtimes CoreSimulator installés dans Profiles ou Volumes, les appareils
+simulés, les téléchargements de composants visibles et les Command Line Tools.
+Les tailles restent des sommes logiques bornées ; les symlinks ne sont pas
+suivis. Seules des valeurs plist XML allowlistées sont lues. Les appareils
+simulés et téléchargements sont protégés par une sensibilité explicite et un
+état d'activité inconnu ou potentiellement en cours.
+
+DerivedData peut être démontré reconstructible mais conserve `INCONNUE`, car un
+`mtime` n'est pas une preuve d'usage. Les autres ressources Apple restent
+inconnues. Aucun adaptateur Apple n'est ajouté au plan et aucune commande
+`xcodebuild`, `simctl` ou Xcode n'est exécutée.
+
+Les tests déterministes sur fixtures couvrent les deux emplacements de runtime,
+les appareils, composants, tailles et invariance des fichiers. Le gate réel du
+Mac 01 est reporté jusqu'à la fin du téléchargement du runtime iOS 26.5 afin de
+ne pas ajouter de charge ou d'ambiguïté pendant une installation active.

@@ -2,11 +2,12 @@
 
 > Statut : MVP CLI 0.1.0 validé ; extensions fonctionnelles en cours
 > Plateforme : macOS
-> Périmètre : Flutter, Android et Docker
+> Périmètre : Flutter, Android, Docker et inventaire Xcode/iOS
 > Interface cible : CLI `dev-audit`
 
 Dev Environment Auditor doit établir une carte vérifiable entre les projets
-Flutter/Android/Docker et les toolchains locales qu'ils exigent. La Phase 0
+Flutter/Android/Docker et les toolchains locales qu'ils exigent, ainsi que les
+ressources Xcode/iOS qui occupent le poste. La Phase 0
 privilégie la preuve, la traçabilité et l'expression honnête de l'incertitude.
 
 Le projet n'est pas un nettoyeur. Il ne contient aucune fonction de suppression,
@@ -140,15 +141,23 @@ n'est jamais écrasée. Le binaire ne contient aucune commande `apply`, `execute
 ou équivalent : les commandes documentées restent des tableaux d'arguments
 destinés à la revue.
 
+Le Lot 11 étend l'auto-détection aux installations `Xcode*.app`, à
+`~/Library/Developer` et à `/Library/Developer`, sans appeler `xcodebuild`,
+`simctl` ou Xcode. L'inventaire distingue l'application Xcode, DerivedData,
+iOS Device Support, les runtimes CoreSimulator, les appareils simulés, les
+téléchargements de composants observables et les Command Line Tools. Les
+simulateurs sont `SENSIBLE + INCONNUE`; un téléchargement reste potentiellement
+actif et aucune ressource Apple ne reçoit d'action de planification.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
 
 La vision plus large d'origine est conservée dans
 [`docs/vision.md`](docs/vision.md). Le MVP Phase 0 reste figé ; l'inventaire du
-daemon et des caches Docker ainsi que la simulation de plan ont été ajoutés
-comme extensions post-MVP. Le lancement de conteneurs, l'exécution d'un
-nettoyage, la GUI et le cloud restent hors périmètre actuel.
+daemon et des caches Docker, la simulation de plan et l'inventaire Xcode/iOS ont
+été ajoutés comme extensions post-MVP. Le lancement de conteneurs, l'exécution
+d'un nettoyage, la GUI et le cloud restent hors périmètre actuel.
 
 ## Installer Go sur macOS avec Homebrew
 
@@ -181,7 +190,7 @@ go vet ./...
 go test ./cmd/dev-audit
 ```
 
-Version de développement actuelle : `0.2.0-dev`. La baseline MVP distribuée
+Version de développement actuelle : `0.3.0-dev`. La baseline MVP distribuée
 localement reste `0.1.0-mvp`.
 
 Validation structurelle du JSON sans Go :
@@ -282,7 +291,10 @@ dev-audit scan \
   --flutter-sdk-root /Users/alice/Developer/flutter \
   --fvm-cache-root /Users/alice/fvm/versions \
   --gradle-user-home /Users/alice/.gradle \
-  --jdk-root /Library/Java/JavaVirtualMachines
+  --jdk-root /Library/Java/JavaVirtualMachines \
+  --xcode-root /Applications/Xcode.app \
+  --apple-developer-root /Users/alice/Library/Developer \
+  --apple-developer-root /Library/Developer
 ```
 
 Les options de racine et `--exclude` sont répétables. Un type de racine fourni
@@ -298,6 +310,14 @@ Les racines automatiques sont toujours considérées comme heuristiques. Elles
 permettent d'établir une correspondance positive, mais ne prouvent pas que le
 reste du disque a été couvert. Les statuts `MISSING` exigent donc une racine
 d'inventaire explicite et `NO_REFERENCE_FOUND` une racine de projets explicite.
+
+Pour Xcode, `DEVELOPER_DIR` est normalisé vers l'application correspondante,
+les applications `Xcode*.app` sont recherchées dans `/Applications` et
+`~/Applications`, puis les deux racines Developer standards sont validées par
+leurs marqueurs structurels. Une application Xcode non standard placée sous un
+dossier de développement peut aussi être retrouvée par la recherche profonde
+bornée. La CLI lit uniquement le système de fichiers : l'état « booted » d'un
+simulateur et la progression exacte d'un téléchargement restent inconnus.
 
 L'inventaire du daemon Docker est optionnel et activé par défaut :
 

@@ -184,6 +184,33 @@ func TestHeuristicProjectDiscoveryNeverProducesNoReferenceFound(t *testing.T) {
 	}
 }
 
+func TestScannerIncludesAppleInventoryWithoutDeclaringCoverage(t *testing.T) {
+	projectRoot := t.TempDir()
+	developerRoot := filepath.Join(t.TempDir(), "Library", "Developer")
+	derivedData := filepath.Join(developerRoot, "Xcode", "DerivedData", "FixtureApp-abc")
+	if err := os.MkdirAll(filepath.Join(derivedData, "Build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(derivedData, "Build", "object.o"), []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	document := application.NewScanner(application.SystemClock{}, "test-version").Scan(
+		context.Background(),
+		application.Config{ProjectRoots: []string{projectRoot}, AppleDeveloperRoots: []string{developerRoot}},
+	)
+	if err := document.Validate(); err != nil {
+		t.Fatalf("Apple scan document is invalid: %v", err)
+	}
+	if len(document.InstalledResources) != 1 || document.InstalledResources[0].Component != "xcode_derived_data" ||
+		document.InstalledResources[0].ReferenceStatus != domain.ReferenceUnknown {
+		t.Fatalf("unexpected Apple scanner result: %#v", document.InstalledResources)
+	}
+	if hasDiagnostic(document.Diagnostics, "INVENTORY_NOT_CONFIGURED") {
+		t.Fatalf("configured Apple inventory was reported absent: %#v", document.Diagnostics)
+	}
+}
+
 func TestScannerSeparatesHostAndDockerJDKRelations(t *testing.T) {
 	projectRoot := t.TempDir()
 	for path, content := range map[string]string{
