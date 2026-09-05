@@ -86,13 +86,17 @@ pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI
 ## Lot 6 — Validation
 
 - [x] Fournir un installateur local produisant la commande autonome `dev-audit`.
-- [ ] Construire un paquet macOS de test distribuable à d'autres machines.
+- [x] Construire les paquets macOS ARM64 et Intel de test.
+- [x] Inclure dans chaque archive une installation utilisateur qui n'utilise pas
+  Go.
+- [x] Générer les sommes SHA-256 des archives.
 - [ ] Publier des binaires précompilés `darwin/arm64` et `darwin/amd64` afin que
   l'utilisateur final n'ait pas besoin d'installer Go.
-- [ ] Fournir une installation utilisateur sans Go, via une archive versionnée,
-  puis idéalement une formule Homebrew.
-- [ ] Publier les sommes de contrôle des binaires et documenter leur
-  vérification avant installation.
+- [ ] Publier les archives versionnées et leurs sommes de contrôle.
+- [ ] Fournir idéalement une formule Homebrew après création du dépôt distant.
+- [ ] Signer les binaires avec un certificat Developer ID, notariser les paquets
+  et vérifier Gatekeeper avant une diffusion publique.
+- [x] Tester le paquet ARM64 avec un `PATH` ne contenant pas Go sur le Mac 01.
 - [ ] Tester `dev-audit scan` sur un Mac propre où Go n'est pas installé.
 - [ ] Tester sur 10 à 15 machines avec vérité terrain.
 - [ ] Mesurer associations explicites, erreurs et utilité perçue.

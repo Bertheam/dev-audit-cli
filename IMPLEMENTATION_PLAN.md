@@ -98,6 +98,12 @@ Le script privilégie un dossier standard déjà dans le `PATH` et accessible sa
 `/opt/homebrew/bin`. Le scanner lui-même ne réalise aucune installation et ne
 modifie aucun projet audité.
 
+Pour la distribution sans Go, `scripts/build-release.sh` produit deux archives
+précompilées `darwin/arm64` et `darwin/amd64`, injecte la version dans le binaire
+et génère un checksum individuel ainsi que `SHA256SUMS`. Chaque archive embarque
+`install.sh`, qui copie seulement le binaire déjà construit vers un dossier du
+`PATH` et n'appelle jamais Go.
+
 ## 5. Architecture
 
 ```text
@@ -273,3 +279,9 @@ symlinks sont regroupés par racine. Les relations distinguent `HOST` et
 image JDK déclarée correspond à l'exigence sans la présenter comme une
 installation locale ni lancer Docker. Sur le projet de validation Chambrage,
 Java 21 ressort ainsi `HOST:UNKNOWN` et `DOCKER:MATCHED`.
+
+Le paquet ARM64 `0.1.0-mvp` a aussi été installé et exécuté avec un `PATH`
+volontairement privé de Go. La version et un scan JSON ont réussi. Le binaire
+Intel a été vérifié comme Mach-O `x86_64`, mais doit encore être exécuté sur une
+machine Intel réelle. Ces contrôles de paquet sur le Mac 01 ne remplacent pas la
+validation prévue sur 10 à 15 machines.

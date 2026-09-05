@@ -17,8 +17,9 @@ import (
 	"dev-environment-auditor/internal/report"
 )
 
+var version = "0.1.0-mvp"
+
 const (
-	version              = "0.1.0-mvp"
 	defaultScanTimeout   = 30 * time.Second
 	maxInputReportBytes  = 64 << 20
 	exitSuccess          = 0

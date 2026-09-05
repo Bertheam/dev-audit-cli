@@ -123,7 +123,7 @@ Validation structurelle du JSON sans Go :
 python3 -m json.tool examples/scan-v1.minimal.json
 ```
 
-## Installer la commande
+## Installer depuis les sources
 
 L'utilisateur final n'a pas besoin de connaître `go run`. Depuis la racine du
 dépôt, l'installateur construit un binaire autonome et choisit un dossier déjà
@@ -147,6 +147,37 @@ le script affiche la ligne `export PATH=...` à appliquer.
 
 L'installation du binaire est une opération de distribution distincte du scan.
 La commande `dev-audit scan` reste intégralement en lecture seule.
+
+Cette méthode construit le binaire et nécessite donc Go. Pour un utilisateur qui
+ne possède pas Go, utiliser une archive précompilée.
+
+## Installer une archive précompilée sans Go
+
+Choisir `darwin_arm64` pour un Mac Apple Silicon ou `darwin_amd64` pour un Mac
+Intel. Après téléchargement de l'archive et de son fichier `.sha256` :
+
+```bash
+shasum -a 256 -c dev-audit_0.1.0-mvp_darwin_arm64.tar.gz.sha256
+tar -xzf dev-audit_0.1.0-mvp_darwin_arm64.tar.gz
+cd dev-audit_0.1.0-mvp_darwin_arm64
+./install.sh
+dev-audit scan
+```
+
+L'archive contient déjà l'exécutable. Son `install.sh` n'appelle ni `go` ni un
+gestionnaire de paquets.
+
+Pour fabriquer les archives en tant que mainteneur :
+
+```bash
+./scripts/build-release.sh 0.1.0-mvp
+cd dist
+shasum -a 256 -c SHA256SUMS
+```
+
+Le dossier `dist/` reçoit les archives ARM64 et Intel, un checksum individuel
+pour chacune et le fichier récapitulatif `SHA256SUMS` ; il n'est pas versionné
+dans Git.
 
 ## Utiliser la CLI
 

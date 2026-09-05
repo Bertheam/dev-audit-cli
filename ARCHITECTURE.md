@@ -37,6 +37,18 @@ borne la détection et le pipeline. `explain` relit un rapport JSON v1 validé e
 affiche les preuves d'un identifiant. La CLI est la seule couche autorisée à
 écrire un rapport explicitement demandé.
 
+### `scripts` et `packaging`
+
+`install.sh` construit depuis les sources et requiert Go. Le script mainteneur
+`build-release.sh` effectue une cross-compilation sans CGO pour `darwin/arm64` et
+`darwin/amd64`, injecte la version, crée les archives et calcule leurs sommes
+SHA-256. Chaque archive reçoit `install-binary.sh` sous le nom `install.sh` ainsi
+que les instructions de `packaging/INSTALL.md`.
+
+L'installateur d'archive n'utilise pas Go : il copie uniquement le binaire déjà
+compilé dans un dossier du `PATH`. La signature Developer ID et la notarisation
+restent un gate obligatoire avant une diffusion publique.
+
 ### `internal/autodetect`
 
 Détecte sans sous-processus les projets, Android SDK, Flutter/FVM, Gradle User
