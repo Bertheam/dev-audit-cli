@@ -283,6 +283,103 @@ func TestExplainRejectsInvalidInputAndSelfOverwrite(t *testing.T) {
 	}
 }
 
+func TestPlanReadsValidatedReportAndEmitsSchemaValidJSON(t *testing.T) {
+	document := validDocument()
+	document.InstalledResources[0] = manualDockerCacheResource()
+	content, err := report.RenderJSON(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dependencies := commandDependencies{
+		readFile: func(path string) ([]byte, error) {
+			if path != "report.json" {
+				t.Fatalf("unexpected report path %q", path)
+			}
+			return content, nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := runWithDependencies(
+		[]string{"plan", "--report", "report.json", "--resource", "resource-cache", "--format", "json"},
+		&stdout,
+		&stderr,
+		dependencies,
+	)
+	if exitCode != exitSuccess {
+		t.Fatalf("plan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	plan, err := report.DecodePlanJSON(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("stdout is not a valid immutable plan: %v\n%s", err, stdout.String())
+	}
+	if plan.Selection.Mode != domain.SelectionExplicitResourceIDs || len(plan.Items) != 1 ||
+		plan.Items[0].OfficialCommand[0] != "docker" {
+		t.Fatalf("unexpected plan: %#v", plan)
+	}
+}
+
+func TestPlanReportsPartialManualSelectionAndRefusesSelfOverwrite(t *testing.T) {
+	content, err := report.RenderJSON(validDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dependencies := commandDependencies{readFile: func(string) ([]byte, error) { return content, nil }}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"plan", "--report", "report.json", "--resource", "missing", "--format", "json"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitPartial {
+		t.Fatalf("missing manual resource exit = %d, want %d, stderr=%q", exitCode, exitPartial, stderr.String())
+	}
+	plan, err := report.DecodePlanJSON(stdout.Bytes())
+	if err != nil || len(plan.Excluded) != 1 || plan.Excluded[0].Reasons[0] != domain.ExclusionResourceNotFound {
+		t.Fatalf("unexpected missing-resource plan: %#v, err=%v", plan, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runWithDependencies(
+		[]string{"plan", "--report", "report.json", "--output", "./report.json"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitUsage {
+		t.Fatalf("self-overwrite exit = %d, want %d", exitCode, exitUsage)
+	}
+}
+
+func TestPlanUsesNewFileWriter(t *testing.T) {
+	content, err := report.RenderJSON(validDocument())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writtenPath := ""
+	dependencies := commandDependencies{
+		readFile: func(string) ([]byte, error) { return content, nil },
+		writeFile: func(string, []byte) error {
+			return errors.New("overwrite-capable writer must not be used")
+		},
+		writeNewFile: func(path string, payload []byte) error {
+			writtenPath = path
+			if !strings.Contains(string(payload), "SIMULATION_ONLY") {
+				t.Fatalf("unexpected plan payload: %s", payload)
+			}
+			return nil
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"plan", "--report", "report.json", "--output", "plan.txt"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitSuccess {
+		t.Fatalf("plan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	if writtenPath != "plan.txt" || stdout.Len() != 0 {
+		t.Fatalf("unexpected output destination: path=%q stdout=%q", writtenPath, stdout.String())
+	}
+}
+
 func TestWritePrivateFileRejectsSymlinkAndUsesPrivateMode(t *testing.T) {
 	directory := t.TempDir()
 	target := filepath.Join(directory, "report.json")
@@ -316,13 +413,48 @@ func TestWritePrivateFileRejectsSymlinkAndUsesPrivateMode(t *testing.T) {
 	}
 }
 
+func TestWriteNewPrivateFileNeverOverwritesExistingPlan(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "plan.json")
+	if err := writeNewPrivateFile(path, []byte("first")); err != nil {
+		t.Fatalf("write new plan: %v", err)
+	}
+	if err := writeNewPrivateFile(path, []byte("second")); err == nil || !strings.Contains(err.Error(), "never overwritten") {
+		t.Fatalf("expected immutable overwrite rejection, got %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "first" {
+		t.Fatalf("existing plan changed: %q", content)
+	}
+}
+
 func TestHelpCommandsSucceed(t *testing.T) {
-	for _, arguments := range [][]string{{"help"}, {"scan", "--help"}, {"explain", "--help"}} {
+	for _, arguments := range [][]string{{"help"}, {"scan", "--help"}, {"explain", "--help"}, {"plan", "--help"}} {
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 		if exitCode := runWithDependencies(arguments, &stdout, &stderr, commandDependencies{}); exitCode != exitSuccess {
 			t.Errorf("%v exit = %d", arguments, exitCode)
 		}
+	}
+}
+
+func manualDockerCacheResource() domain.InstalledResource {
+	size := int64(2048)
+	evidence := []domain.Evidence{{SourceType: "test", RuleID: "test.rule"}}
+	return domain.InstalledResource{
+		ID: "resource-cache", Ecosystem: "docker", Component: "docker_build_cache", Path: "docker://build_cache/cache123456789",
+		SizeBytes:              &size,
+		PotentiallyReclaimable: &domain.SpaceEstimate{Bytes: size, Rationale: "fixture", Evidence: evidence},
+		ReferenceStatus:        domain.ReferenceUnknown,
+		Classifications: []domain.ResourceClassification{
+			{Category: domain.CategoryReconstructible, Rationale: "fixture", Evidence: evidence},
+			{Category: domain.CategoryUnknown, Rationale: "fixture", Evidence: evidence},
+		},
+		Metadata: []domain.MetadataEntry{{Key: "management", Value: "docker buildx"}},
+		Warnings: []string{},
 	}
 }
 

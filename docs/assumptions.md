@@ -68,5 +68,16 @@
   référence seule reste `INCONNUE`.
 - `potentially_reclaimable` est une estimation locale justifiée et distincte de
   `size_bytes`. Elle n'est ni un total garanti ni une autorisation d'action.
+- Le plan simulé possède son propre contrat JSON v1. Son `plan_id` couvre tout
+  le contenu et `source_report_sha256` le lie aux octets exacts du rapport lu.
+- La sélection automatique exige `ORPHELINE_PROBABLE`, une estimation et une
+  action ciblée prise en charge. `SENSIBLE`, `INCONNUE` et `UTILISEE` sont
+  toujours exclues de ce mode.
+- `--resource` sélectionne un élément pour simulation et revue seulement. Cette
+  demande n'autorise aucune exécution, même lorsque la ressource est sensible
+  ou d'usage inconnu.
+- Un plan fichier est créé exclusivement et ne peut pas écraser un fichier
+  existant. Toute future exécution devra consommer exactement un plan validé ;
+  aucune primitive d'exécution n'existe dans le Lot 10.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.

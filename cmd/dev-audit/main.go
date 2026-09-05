@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"dev-environment-auditor/internal/autodetect"
 	"dev-environment-auditor/internal/classification"
 	"dev-environment-auditor/internal/domain"
+	"dev-environment-auditor/internal/planning"
 	"dev-environment-auditor/internal/report"
 )
 
@@ -30,10 +33,11 @@ const (
 )
 
 type commandDependencies struct {
-	scan      func(context.Context, application.Config) domain.ScanDocument
-	detect    func(context.Context, autodetect.Config) autodetect.Result
-	readFile  func(string) ([]byte, error)
-	writeFile func(string, []byte) error
+	scan         func(context.Context, application.Config) domain.ScanDocument
+	detect       func(context.Context, autodetect.Config) autodetect.Result
+	readFile     func(string) ([]byte, error)
+	writeFile    func(string, []byte) error
+	writeNewFile func(string, []byte) error
 }
 
 type stringListFlag []string
@@ -59,10 +63,11 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	scanner := application.NewScanner(application.SystemClock{}, version)
 	detector := autodetect.New()
 	return runWithDependencies(arguments, stdout, stderr, commandDependencies{
-		scan:      scanner.Scan,
-		detect:    detector.Detect,
-		readFile:  readReportFile,
-		writeFile: writePrivateFile,
+		scan:         scanner.Scan,
+		detect:       detector.Detect,
+		readFile:     readReportFile,
+		writeFile:    writePrivateFile,
+		writeNewFile: writeNewPrivateFile,
 	})
 }
 
@@ -88,6 +93,8 @@ func runWithDependencies(
 		return runScan(arguments[1:], stdout, stderr, dependencies)
 	case "explain":
 		return runExplain(arguments[1:], stdout, stderr, dependencies)
+	case "plan":
+		return runPlan(arguments[1:], stdout, stderr, dependencies)
 	case "help", "-h", "--help":
 		printRootUsage(stdout)
 		return exitSuccess
@@ -96,6 +103,90 @@ func runWithDependencies(
 		printRootUsage(stderr)
 		return exitUsage
 	}
+}
+
+func runPlan(
+	arguments []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	dependencies commandDependencies,
+) int {
+	flags := flag.NewFlagSet("plan", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		printPlanUsage(stderr)
+		flags.PrintDefaults()
+	}
+	var reportPath string
+	var outputPath string
+	var format string
+	var resourceIDs stringListFlag
+	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
+	flags.Var(&resourceIDs, "resource", "resource ID to include manually; repeatable")
+	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
+	flags.StringVar(&outputPath, "output", "", "new output file; never overwritten; '-' means stdout")
+	if err := flags.Parse(arguments); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if strings.TrimSpace(reportPath) == "" || flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "plan requires --report FILE and accepts flags only")
+		return exitUsage
+	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format != "terminal" && format != "json" {
+		fmt.Fprintln(stderr, "--format must be terminal or json")
+		return exitUsage
+	}
+	if outputPath != "" && outputPath != "-" && sameCleanPath(reportPath, outputPath) {
+		fmt.Fprintln(stderr, "--output must not overwrite the input report")
+		return exitUsage
+	}
+
+	content, err := dependencies.readFile(reportPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot read scan report: %v\n", err)
+		return exitOperationalError
+	}
+	document, err := report.DecodeJSON(content)
+	if err != nil {
+		fmt.Fprintf(stderr, "invalid scan report: %v\n", err)
+		return exitOperationalError
+	}
+	digest := sha256.Sum256(content)
+	plan, err := planning.Build(document, planning.Config{
+		ToolVersion:        version,
+		SourceReportSHA256: hex.EncodeToString(digest[:]),
+		ResourceIDs:        []string(resourceIDs),
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot build cleanup plan: %v\n", err)
+		return exitOperationalError
+	}
+	var payload []byte
+	if format == "json" {
+		payload, err = report.RenderPlanJSON(plan)
+	} else {
+		payload, err = report.RenderPlanTerminal(plan)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "cannot render cleanup plan: %v\n", err)
+		return exitOperationalError
+	}
+	if outputPath != "" && outputPath != "-" && dependencies.writeNewFile == nil {
+		fmt.Fprintln(stderr, "cannot write immutable cleanup plan: new-file writer is unavailable")
+		return exitOperationalError
+	}
+	if err := writePayload(stdout, outputPath, payload, dependencies.writeNewFile); err != nil {
+		fmt.Fprintf(stderr, "cannot write immutable cleanup plan: %v\n", err)
+		return exitOperationalError
+	}
+	if plan.Selection.Mode == domain.SelectionExplicitResourceIDs && len(plan.Excluded) > 0 {
+		return exitPartial
+	}
+	return exitSuccess
 }
 
 func runScan(
@@ -365,6 +456,36 @@ func writePrivateFile(path string, content []byte) error {
 		_ = file.Close()
 		return err
 	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+func writeNewPrivateFile(path string, content []byte) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("output path cannot be empty")
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return errors.New("output already exists; immutable plans are never overwritten")
+		}
+		return err
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
 	return file.Close()
 }
 
@@ -392,6 +513,7 @@ func printRootUsage(output io.Writer) {
 	fmt.Fprintln(output, "Usage:")
 	fmt.Fprintln(output, "  dev-audit scan [--root PATH] [options]")
 	fmt.Fprintln(output, "  dev-audit explain --report FILE ID [--output FILE]")
+	fmt.Fprintln(output, "  dev-audit plan --report FILE [--resource ID ...] [options]")
 	fmt.Fprintln(output, "  dev-audit version")
 }
 
@@ -402,4 +524,9 @@ func printScanUsage(output io.Writer) {
 
 func printExplainUsage(output io.Writer) {
 	fmt.Fprintln(output, "Usage: dev-audit explain --report FILE ID [--output FILE]")
+}
+
+func printPlanUsage(output io.Writer) {
+	fmt.Fprintln(output, "Usage: dev-audit plan --report FILE [--resource ID ...] [--format terminal|json] [--output NEW_FILE]")
+	fmt.Fprintln(output, "Without --resource, only conservative default-safe candidates are selected. No command is executed.")
 }

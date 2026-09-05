@@ -28,7 +28,12 @@ des versions historiques et des configurations Groovy ou Kotlin DSL variées.
 3. Vérifier manuellement chaque association importante avec le testeur.
 4. Qualifier faux positifs, faux négatifs, ambiguïtés et diagnostics incompris.
 5. Demander si le rapport apporte plus de confiance qu'une liste de tailles.
-6. Confirmer que projets, configurations et toolchains n'ont pas été modifiés.
+6. Produire un plan automatique depuis le rapport et vérifier qu'une ressource
+   sensible, inconnue ou utilisée n'apparaît jamais dans `items`.
+7. Simuler manuellement un petit nombre d'identifiants et faire vérifier impact,
+   estimation, projets affectés et commande ciblée, sans exécuter celle-ci.
+8. Confirmer que projets, configurations, toolchains et état Docker n'ont pas
+   été modifiés.
 
 ## Mesures
 

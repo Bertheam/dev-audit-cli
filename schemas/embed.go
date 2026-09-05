@@ -7,3 +7,9 @@ import _ "embed"
 //
 //go:embed scan-v1.schema.json
 var ScanV1 []byte
+
+// CleanupPlanV1 is the JSON Schema 2020-12 contract for immutable,
+// simulation-only cleanup plans.
+//
+//go:embed cleanup-plan-v1.schema.json
+var CleanupPlanV1 []byte

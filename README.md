@@ -127,15 +127,28 @@ est publiée uniquement pour un enregistrement BuildKit marqué récupérable pa
 Docker, non partagé et non mutable. Elle reste une estimation par ressource,
 jamais une recommandation ou un total garanti.
 
+Le Lot 10 ajoute `dev-audit plan`, qui transforme un rapport JSON validé en un
+plan de nettoyage strictement simulé. Le mode automatique ne sélectionne que
+les ressources `ORPHELINE_PROBABLE` disposant d'une estimation conservatrice et
+d'une commande officielle ciblée ; toute ressource `SENSIBLE`, `INCONNUE` ou
+`UTILISEE` est exclue. `--resource` permet d'examiner manuellement un identifiant
+précis, mais ne lance toujours rien et expose les risques au lieu de les masquer.
+
+Un plan JSON est lié au SHA-256 exact du rapport source et possède lui-même un
+identifiant calculé sur son contenu. Sa sortie fichier est créée en `0600` et
+n'est jamais écrasée. Le binaire ne contient aucune commande `apply`, `execute`
+ou équivalent : les commandes documentées restent des tableaux d'arguments
+destinés à la revue.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
 
 La vision plus large d'origine est conservée dans
 [`docs/vision.md`](docs/vision.md). Le MVP Phase 0 reste figé ; l'inventaire du
-daemon et des caches Docker a été ajouté comme extension post-MVP en lecture
-seule. Le lancement de conteneurs, le nettoyage, la GUI et le cloud restent
-hors périmètre actuel.
+daemon et des caches Docker ainsi que la simulation de plan ont été ajoutés
+comme extensions post-MVP. Le lancement de conteneurs, l'exécution d'un
+nettoyage, la GUI et le cloud restent hors périmètre actuel.
 
 ## Installer Go sur macOS avec Homebrew
 
@@ -293,9 +306,10 @@ dev-audit scan --docker-inventory=false
 ```
 
 Docker absent ou arrêté n'empêche pas le reste du scan et produit seulement un
-diagnostic `INFO`. La CLI n'utilise ni `prune`, ni `rm`, ni `pull`, ni `run`, ni
-commande de build. Elle ne collecte pas les commandes, labels, variables,
-montages ou contenus des conteneurs.
+diagnostic `INFO`. Le scanner n'exécute ni `prune`, ni `rm`, ni `pull`, ni `run`,
+ni commande de build. Il ne collecte pas les commandes, labels, variables,
+montages ou contenus des conteneurs. `plan` peut documenter une commande ciblée
+mais ne l'exécute pas.
 
 La politique d'ancienneté peut être ajustée sans modifier les autres règles :
 
@@ -340,13 +354,47 @@ dev-audit scan \
 dev-audit explain --report audit.json resource-0123456789abcdef
 ```
 
-Un fichier de sortie est créé avec les permissions `0600`. La CLI refuse une
-sortie qui est un symlink et `explain` refuse d'écraser son rapport source.
+Créer ensuite un plan conservateur en lecture seule :
+
+```bash
+dev-audit plan \
+  --report audit.json \
+  --format json \
+  --output cleanup-plan.json
+```
+
+Sans `--resource`, la sélection est `DEFAULT_SAFE`. Il est normal qu'elle soit
+vide si le scan n'a établi aucune `ORPHELINE_PROBABLE` : l'absence de certitude
+ne devient pas une proposition de nettoyage.
+
+Pour simuler uniquement des ressources choisies par leur identifiant :
+
+```bash
+dev-audit plan \
+  --report audit.json \
+  --resource resource-0123456789abcdef \
+  --resource resource-fedcba9876543210
+```
+
+Ce mode `EXPLICIT_RESOURCE_IDS` peut montrer un élément `SENSIBLE`, `INCONNUE`
+ou `UTILISEE`, accompagné d'avertissements. Il s'agit d'une sélection pour la
+revue, pas d'une confirmation d'exécution. Une ressource absente ou sans action
+ciblée prise en charge est placée dans `excluded` et donne le code de sortie
+`1`. Les actions décrites actuellement couvrent les caches BuildKit, images et
+conteneurs Docker, les paquets Android `sdkmanager` et les AVD gérés par
+`avdmanager`. Aucun `docker system prune`, `--force` ou suppression directe de
+chemin n'est produit.
+
+Un fichier de sortie est créé avec les permissions `0600`. Les rapports de scan
+refusent une sortie qui est un symlink et `explain` refuse d'écraser son rapport
+source. Un plan refuse en plus tout chemin de sortie déjà existant, afin que le
+contenu validé ne soit pas remplacé silencieusement.
 
 Codes de sortie :
 
 - `0` : commande terminée sans diagnostic `ERROR` ;
-- `1` : rapport partiel avec diagnostic `ERROR`, ou identifiant absent ;
+- `1` : rapport partiel avec diagnostic `ERROR`, identifiant absent, ou
+  sélection manuelle partiellement exclue du plan ;
 - `2` : arguments invalides ;
 - `3` : erreur de lecture, validation, rendu ou écriture.
 
@@ -360,6 +408,8 @@ Codes de sortie :
 - [`docs/validation-plan.md`](docs/validation-plan.md) : protocole terrain.
 - [`docs/adr/`](docs/adr/) : décisions structurantes.
 - [`schemas/scan-v1.schema.json`](schemas/scan-v1.schema.json) : contrat JSON v1.
+- [`schemas/cleanup-plan-v1.schema.json`](schemas/cleanup-plan-v1.schema.json) :
+  contrat du plan simulé immuable.
 
 ## Règle de sécurité centrale
 

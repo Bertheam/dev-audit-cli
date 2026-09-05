@@ -180,8 +180,19 @@ et `Mutable=false`.
 
 ### Lot 10 — Plan de nettoyage simulé
 
-- [ ] Produire un plan sans exécution, élément par élément, avec impact,
+- [x] Produire un plan sans exécution, élément par élément, avec impact,
   commande officielle et estimation conservatrice.
-- [ ] Exclure par défaut toute ressource sensible ou d'usage inconnu.
-- [ ] Ajouter sélection manuelle et format de plan immuable avant toute future
+- [x] Exclure par défaut toute ressource sensible ou d'usage inconnu.
+- [x] Ajouter sélection manuelle et format de plan immuable avant toute future
   primitive d'exécution.
+
+Gate validé sur le Mac 01 à partir du rapport réel du Lot 9, sans relancer un
+scan lourd pendant le téléchargement du simulateur iOS 26.5 par Xcode. Le plan
+`DEFAULT_SAFE` a exclu les 189 ressources et n'en a sélectionné aucune, ce qui
+est conforme à l'absence d'`ORPHELINE_PROBABLE`. Une sélection manuelle d'un
+cache BuildKit `INCONNUE` a produit un unique élément avec impact, estimation de
+48 670 000 octets, avertissement, confirmation obligatoire et filtre `id`
+ciblé. Les empreintes des images, conteneurs et enregistrements BuildKit
+normalisés sont restées identiques avant et après la simulation. Tests avec
+détecteur de concurrence, `go vet`, schéma embarqué et installation réelle de
+`dev-audit` réussis.

@@ -17,6 +17,11 @@ Arguments CLI
   -> correlation
   -> classification explicable
   -> terminal ou JSON v1
+
+Rapport JSON v1 validé
+  -> planning (sélection automatique conservatrice ou IDs explicites)
+  -> plan SIMULATION_ONLY lié au SHA-256 source
+  -> terminal ou cleanup-plan JSON v1
 ```
 
 Chaque étape retourne ses résultats et ses diagnostics partiels. Une erreur sur
@@ -35,7 +40,9 @@ applicatif la provenance heuristique de leur couverture. Les racines typées
 restent répétables et permettent un mode entièrement explicite. Un contexte
 borne la détection et le pipeline. `explain` relit un rapport JSON v1 validé et
 affiche les preuves d'un identifiant. La CLI est la seule couche autorisée à
-écrire un rapport explicitement demandé.
+écrire un rapport explicitement demandé. `plan` relit le même contrat, calcule
+son empreinte et produit un artefact simulé ; une sortie fichier utilise une
+création exclusive afin de ne jamais remplacer un plan déjà revu.
 
 ### `scripts` et `packaging`
 
@@ -91,6 +98,12 @@ porte l'environnement `HOST`, `DOCKER` ou `DOCKER_DAEMON`. Pour compatibilité
 avec les premiers rapports JSON v1, l'absence du champ `environment` se lit
 comme `HOST`. Les champs additifs de classification restent optionnels à la
 lecture pour conserver la compatibilité avec les rapports v1 antérieurs.
+
+Le domaine contient aussi le contrat indépendant `CleanupPlan`. Ses invariants
+imposent `SIMULATION_ONLY`, une confirmation explicite par élément, la cohérence
+du résumé et un `plan_id` SHA-256 recalculé sur tout le contenu hors identifiant.
+Une sélection `DEFAULT_SAFE` ne peut contenir ni `SENSIBLE`, ni `INCONNUE`, ni
+`UTILISEE` et exige `ORPHELINE_PROBABLE` avec une estimation conservatrice.
 
 ### `internal/discovery`
 
@@ -234,6 +247,26 @@ qu'il est récupérable, non partagé et non mutable. Sa justification et ses
 preuves restent attachées à la ressource. Les tailles observées et les espaces
 potentiels ne sont pas additionnés comme s'ils étaient des octets uniques.
 
+### `internal/planning`
+
+Transforme un rapport validé en plan déterministe sans accéder au système de
+fichiers, au réseau ni aux gestionnaires locaux. Par défaut, chaque ressource
+est soit sélectionnée selon les invariants conservateurs, soit conservée dans
+`excluded` avec des motifs structurés. Une liste `--resource` remplace cette
+politique par une sélection manuelle limitée aux identifiants demandés.
+
+Les actions prises en charge produisent uniquement des tableaux d'arguments
+ciblés : filtre d'identifiant BuildKit, identifiant d'image ou de conteneur,
+identifiant de paquet Android, ou nom d'AVD. Les localisateurs et métadonnées
+sont validés avant d'entrer dans une commande. Aucune action générale, option
+forcée, commande shell ou suppression directe de chemin n'est construite.
+
+Les projets affectés sont recopiés depuis les relations du rapport. Les impacts,
+catégories de risque, preuves, avertissements, tailles observées et estimations
+restent attachés à chaque élément. Le total porte volontairement le nom
+`known_potentially_reclaimable_bytes_sum` : il s'agit d'une somme d'estimations
+connues, jamais d'un gain garanti.
+
 ### `internal/evidence`
 
 Centralise les preuves, les règles de confiance, la suppression des valeurs
@@ -251,7 +284,9 @@ une suppression. Les rapports d'entrée de `explain` sont limités à 64 Mio,
 refusent les champs inconnus et les valeurs JSON supplémentaires. Le rapport
 terminal affiche séparément `observed_size` et `potentially_reclaimable`, puis
 `explain` expose la justification et les preuves de chaque classification ou
-estimation.
+estimation. Le second schéma embarqué `cleanup-plan-v1.schema.json` valide les
+plans simulés. Leur décodage recalcule aussi l'identifiant de contenu afin de
+rejeter toute altération après création.
 
 ### `internal/platform`
 
@@ -271,10 +306,15 @@ racine.
 ## Frontière de lecture seule
 
 « Lecture seule » signifie qu'aucun projet, cache, SDK ou fichier de configuration
-n'est modifié. Deux écritures explicites restent permises :
+n'est modifié. Trois écritures explicites restent permises :
 
 1. la sortie standard du terminal ;
-2. un rapport vers le chemin fourni par `--output`.
+2. un rapport vers le chemin fourni par `scan --output` ;
+3. un plan simulé vers un nouveau chemin fourni par `plan --output`.
+
+Le troisième cas utilise une création exclusive : un plan existant n'est
+jamais tronqué ni remplacé. `plan` ne lance aucune commande qu'il décrit et la
+CLI n'expose aucune primitive d'application du plan.
 
 Les fichiers temporaires persistants, journaux implicites et caches applicatifs
 sont interdits en Phase 0.

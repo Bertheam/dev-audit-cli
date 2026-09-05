@@ -375,3 +375,38 @@ Avec un seuil de 1 jour, 41 caches BuildKit observés à 2 ou 3 jours ont reçu
 `ANCIENNE`, tout en conservant `INCONNUE` et sans devenir
 `ORPHELINE_PROBABLE`. Le prochain lot fonctionnel est le Lot 10 — plan de
 nettoyage simulé sans exécution.
+
+## 18. Lot 10 terminé — plan de nettoyage simulé et immuable
+
+`dev-audit plan --report FILE` transforme désormais un rapport JSON v1 validé
+en un artefact `SIMULATION_ONLY`. Chaque élément contient l'impact, les projets
+affectés, les catégories de risque, les preuves, la taille observée,
+l'estimation éventuelle et une commande officielle sous forme de tableau
+d'arguments. La commande n'est jamais exécutée et la CLI ne possède aucune
+primitive `apply` ou `execute`.
+
+La politique `DEFAULT_SAFE` exige `ORPHELINE_PROBABLE`, une estimation
+conservatrice et un adaptateur ciblé, tout en interdisant `SENSIBLE`, `INCONNUE`
+et `UTILISEE`. `--resource ID` permet une simulation manuelle limitée aux
+identifiants choisis ; les risques restent visibles et chaque élément exige une
+confirmation explicite. Une ressource absente ou sans action prise en charge
+reste dans `excluded`.
+
+Le contrat `cleanup-plan-v1.schema.json` est embarqué. Le plan contient le
+SHA-256 exact du rapport source et son `plan_id` couvre l'intégralité de son
+contenu hors identifiant. Le décodage rejette toute altération. Une sortie
+fichier est créée en `0600` avec création exclusive et ne peut pas écraser un
+plan existant.
+
+Les adaptateurs actuels décrivent des actions ciblées pour les caches BuildKit,
+images et conteneurs Docker, les paquets `sdkmanager` et les AVD `avdmanager`.
+Ils ne produisent ni shell, ni `docker system prune`, ni `--force`, ni
+suppression directe de chemin.
+
+Le gate réel du Mac 01 a utilisé le rapport du Lot 9 afin de ne pas perturber le
+téléchargement Xcode du simulateur iOS 26.5. La sélection automatique a produit
+0 élément et 189 exclusions, conformément à l'absence d'orpheline probable. La
+simulation manuelle d'un cache BuildKit `INCONNUE` a exposé son estimation de
+48 670 000 octets et le filtre ciblé attendu. Les empreintes Docker normalisées
+sont restées inchangées. Tests `-race`, couverture, `go vet`, installation dans
+`/opt/homebrew/bin` et exécution par `dev-audit plan` ont réussi.

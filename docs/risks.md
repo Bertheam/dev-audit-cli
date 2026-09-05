@@ -22,4 +22,8 @@
 | Ancienneté déduite d'un `mtime` ou d'une création | Faux classement d'une ressource encore utile | Accepter uniquement une dernière utilisation allowlistée et enregistrer le seuil appliqué. |
 | `NO_REFERENCE_FOUND` présenté comme inutilisé | Suppression d'une ressource utile hors couverture | Exiger aussi reconstruction prouvée et ancienneté fiable pour `ORPHELINE_PROBABLE` ; sinon conserver `INCONNUE`. |
 | Tailles Docker partagées additionnées | Surestimation de l'espace récupérable | Séparer taille observée et estimation potentielle ; exclure cache partagé ou mutable et ne pas publier de total garanti. |
+| Plan automatique incluant une ressource risquée | Perte future si le plan est un jour exécuté | Invariant de domaine : exiger `ORPHELINE_PROBABLE` et une estimation ; interdire `SENSIBLE`, `INCONNUE` et `UTILISEE`. |
+| Commande de plan trop large ou injectable | Nettoyage hors de la ressource choisie | Construire des tableaux d'arguments depuis des identifiants validés ; interdire shell, `system prune`, options forcées et suppressions directes. |
+| Plan modifié ou rapport remplacé entre revue et action | Exécution future différente de la simulation validée | Lier le plan au SHA-256 source, calculer son identifiant sur le contenu et créer le fichier sans écrasement. |
+| Estimations additionnées prises pour un gain garanti | Mauvaise décision de capacité | Nom explicite du total, somme des seules estimations connues sélectionnées et avertissement systématique. |
 | Chemin de module Go provisoire | Renommage d'import avant publication | Fixer l'URL distante avant toute publication ou import public. |

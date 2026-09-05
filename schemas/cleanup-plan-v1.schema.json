@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev Environment Auditor cleanup plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_version",
+    "plan_id",
+    "mode",
+    "source_report_sha256",
+    "source_scan_completed_at",
+    "selection",
+    "items",
+    "excluded",
+    "summary",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "plan_id": {"type": "string", "pattern": "^plan-sha256-[0-9a-f]{64}$"},
+    "mode": {"const": "SIMULATION_ONLY"},
+    "source_report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_scan_completed_at": {"type": "string", "format": "date-time"},
+    "selection": {"$ref": "#/$defs/selection"},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "excluded": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exclusion"}
+    },
+    "summary": {"$ref": "#/$defs/summary"},
+    "warnings": {"$ref": "#/$defs/stringArray"}
+  },
+  "$defs": {
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "requested_resource_ids"],
+      "properties": {
+        "mode": {"enum": ["DEFAULT_SAFE", "EXPLICIT_RESOURCE_IDS"]},
+        "requested_resource_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "resource_id",
+        "ecosystem",
+        "component",
+        "path",
+        "selected_by",
+        "affected_project_ids",
+        "risk_categories",
+        "impact",
+        "official_command",
+        "requires_explicit_confirmation",
+        "rationale",
+        "evidence",
+        "warnings"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "resource_id": {"type": "string", "minLength": 1},
+        "ecosystem": {"type": "string", "minLength": 1},
+        "component": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "selected_by": {"enum": ["DEFAULT_SAFE", "MANUAL"]},
+        "observed_size_bytes": {"type": "integer", "minimum": 0},
+        "estimated_reclaimable_bytes": {"type": "integer", "minimum": 0},
+        "affected_project_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "risk_categories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["UTILISEE", "RECONSTRUCTIBLE", "ANCIENNE", "ORPHELINE_PROBABLE", "SENSIBLE", "INCONNUE"]
+          }
+        },
+        "impact": {"type": "string", "minLength": 1},
+        "official_command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "requires_explicit_confirmation": {"const": true},
+        "rationale": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence"}
+        },
+        "warnings": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resource_id", "reasons"],
+      "properties": {
+        "resource_id": {"type": "string", "minLength": 1},
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SENSITIVE",
+              "UNKNOWN_USAGE",
+              "USED",
+              "NOT_PROBABLE_ORPHAN",
+              "NO_CONSERVATIVE_ESTIMATE",
+              "UNSUPPORTED_ACTION",
+              "RESOURCE_NOT_FOUND"
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_count",
+        "excluded_count",
+        "known_potentially_reclaimable_bytes_sum",
+        "selected_items_without_estimate"
+      ],
+      "properties": {
+        "selected_count": {"type": "integer", "minimum": 0},
+        "excluded_count": {"type": "integer", "minimum": 0},
+        "known_potentially_reclaimable_bytes_sum": {"type": "integer", "minimum": 0},
+        "selected_items_without_estimate": {"type": "integer", "minimum": 0}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_type", "rule_id"],
+      "properties": {
+        "source_type": {"type": "string", "minLength": 1},
+        "file_path": {"type": "string"},
+        "key": {"type": "string"},
+        "line_hint": {"type": "integer", "minimum": 1},
+        "command": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "observed_value": {"type": "string"},
+        "rule_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}
