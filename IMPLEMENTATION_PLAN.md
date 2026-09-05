@@ -114,6 +114,7 @@ internal/domain           modèle et invariants
 internal/discovery        découverte contrôlée des projets
 internal/analyzers        analyse statique Flutter/Android/Gradle
 internal/inventory        inventaire local et tailles estimées
+internal/dockerinventory  inventaire borné du daemon Docker
 internal/correlation      rapprochement exigences/ressources
 internal/evidence         preuves, confiance et diagnostics
 internal/report           terminal et JSON v1
@@ -310,3 +311,23 @@ Sur le Mac 01, le scan zéro-configuration a trouvé 2 images système et 1 AVD,
 sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est le Lot 8 —
 Inventaire Docker en lecture seule ; la publication et la validation
 multi-machines restent reportées à la finalisation.
+
+## 16. Lot 8 en cours — état Docker local
+
+Le scanner détecte maintenant la CLI Docker et traite un daemon absent comme
+une capacité optionnelle. Lorsqu'il répond, cinq commandes de lecture au maximum
+collectent la version, les images, les conteneurs, les builders et le cache
+BuildKit. Chaque commande possède un timeout de processus et une limite de
+sortie ; l'ensemble reste borné par le timeout global du scan.
+
+Les formats CLI demandent uniquement des champs allowlistés. Les commandes,
+labels, variables, montages et contenus des conteneurs ne sont jamais demandés.
+Les ressources Docker utilisent un localisateur `docker://` pour ne pas les
+confondre avec un chemin de l'hôte. Elles restent `UNKNOWN` tant que l'analyse
+statique Docker/Compose n'a pas établi de référence.
+
+Le test réel du Mac 01 a trouvé 51 images, 19 conteneurs, 2 builders et 44
+enregistrements BuildKit sans diagnostic `WARNING` ou `ERROR`. Il a également
+permis de rendre le scanner compatible avec un plugin Buildx plus ancien que la
+documentation courante : les timeouts sont imposés par Go plutôt que par une
+option CLI facultative.

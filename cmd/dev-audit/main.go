@@ -122,6 +122,7 @@ func runScan(
 	var timeout time.Duration
 	var autoDetect bool
 	var deepSearch bool
+	var dockerInventory bool
 	flags.Var(&projectRoots, "root", "project search root; repeatable; auto-detected when omitted")
 	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
 	flags.Var(&androidRoots, "android-sdk-root", "Android SDK inventory root; repeatable")
@@ -135,6 +136,7 @@ func runScan(
 	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
 	flags.BoolVar(&autoDetect, "auto-detect", true, "detect omitted project and inventory roots without executing tools")
 	flags.BoolVar(&deepSearch, "deep-search", true, "run a bounded search of conventional development locations")
+	flags.BoolVar(&dockerInventory, "docker-inventory", true, "observe local Docker images, containers, builders and BuildKit cache when available")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -216,6 +218,7 @@ func runScan(
 		FVMCacheRoots:              []string(fvmRoots),
 		GradleUserHomeRoots:        []string(gradleRoots),
 		JDKRoots:                   []string(jdkRoots),
+		DockerInventory:            dockerInventory,
 		PreScanDiagnostics:         preScanDiagnostics,
 		ProjectDiscoveryHeuristic:  projectDiscoveryHeuristic,
 		HeuristicInventoryFamilies: heuristicInventoryFamilies,

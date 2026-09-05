@@ -10,6 +10,7 @@ import (
 	"dev-environment-auditor/internal/analyzers"
 	"dev-environment-auditor/internal/application"
 	"dev-environment-auditor/internal/discovery"
+	"dev-environment-auditor/internal/dockerinventory"
 	"dev-environment-auditor/internal/domain"
 	"dev-environment-auditor/internal/environments"
 	"dev-environment-auditor/internal/inventory"
@@ -19,6 +20,14 @@ import (
 type sequenceClock struct {
 	values []time.Time
 	index  int
+}
+
+type dockerInspectorStub struct {
+	result dockerinventory.Result
+}
+
+func (stub dockerInspectorStub) Inspect(context.Context, dockerinventory.Config) dockerinventory.Result {
+	return stub.result
 }
 
 func (clock *sequenceClock) Now() time.Time {
@@ -43,6 +52,7 @@ func TestScannerRunsReadOnlyPipelineAndProducesSchemaValidDocument(t *testing.T)
 		analyzers.New(analyzers.OSFileSystem{}),
 		environments.New(environments.OSFileSystem{}),
 		inventory.New(inventory.OSFileSystem{}),
+		nil,
 		clock,
 		"test-version",
 	)
@@ -183,6 +193,51 @@ func TestScannerSeparatesHostAndDockerJDKRelations(t *testing.T) {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+func TestScannerIncludesRequestedDockerDaemonInventory(t *testing.T) {
+	projectRoot := t.TempDir()
+	clock := &sequenceClock{values: []time.Time{time.Unix(1, 0), time.Unix(2, 0)}}
+	dockerResource := domain.InstalledResource{
+		ID:              "resource-docker",
+		Ecosystem:       "docker",
+		Component:       "docker_image",
+		Path:            "docker://image/sha256:fixture",
+		ReferenceStatus: domain.ReferenceUnknown,
+		Metadata:        []domain.MetadataEntry{},
+		Warnings:        []string{},
+	}
+	scanner := application.NewScannerWithAdapters(
+		discovery.New(discovery.OSFileSystem{}),
+		analyzers.New(analyzers.OSFileSystem{}),
+		environments.New(environments.OSFileSystem{}),
+		inventory.New(inventory.OSFileSystem{}),
+		dockerInspectorStub{result: dockerinventory.Result{
+			Resources: []domain.InstalledResource{dockerResource},
+			Diagnostics: []domain.Diagnostic{{
+				Code:     "DOCKER_DAEMON_CONNECTED",
+				Severity: domain.SeverityInfo,
+				Scope:    "docker-inventory",
+				Message:  "fixture",
+			}},
+		}},
+		clock,
+		"test-version",
+	)
+	document := scanner.Scan(context.Background(), application.Config{
+		ProjectRoots:    []string{projectRoot},
+		DockerInventory: true,
+	})
+
+	if len(document.InstalledResources) != 1 || document.InstalledResources[0].ID != dockerResource.ID {
+		t.Fatalf("Docker daemon resource was not included: %#v", document.InstalledResources)
+	}
+	if !hasDiagnostic(document.Diagnostics, "DOCKER_DAEMON_CONNECTED") {
+		t.Fatalf("Docker daemon diagnostic was not preserved: %#v", document.Diagnostics)
+	}
+	if _, err := report.RenderJSON(document); err != nil {
+		t.Fatalf("Docker inventory document must satisfy JSON schema: %v", err)
+	}
 }
 `,
 		filepath.Join(projectRoot, "Dockerfile"): "FROM eclipse-temurin:21-jdk-alpine AS builder\n",

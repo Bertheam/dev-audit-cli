@@ -11,6 +11,7 @@ import (
 	"dev-environment-auditor/internal/analyzers"
 	"dev-environment-auditor/internal/correlation"
 	"dev-environment-auditor/internal/discovery"
+	"dev-environment-auditor/internal/dockerinventory"
 	"dev-environment-auditor/internal/domain"
 	"dev-environment-auditor/internal/environments"
 	"dev-environment-auditor/internal/inventory"
@@ -35,6 +36,7 @@ type Config struct {
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
 	JDKRoots            []string
+	DockerInventory     bool
 	PreScanDiagnostics  []domain.Diagnostic
 	// ProjectDiscoveryHeuristic prevents absence-of-reference conclusions when
 	// project roots came from an automatic search rather than an explicit scope.
@@ -49,8 +51,13 @@ type Scanner struct {
 	analyzer     *analyzers.Analyzer
 	environments *environments.Analyzer
 	inventory    *inventory.Inventory
+	docker       DockerInspector
 	clock        Clock
 	version      string
+}
+
+type DockerInspector interface {
+	Inspect(context.Context, dockerinventory.Config) dockerinventory.Result
 }
 
 func NewScanner(clock Clock, version string) *Scanner {
@@ -59,6 +66,7 @@ func NewScanner(clock Clock, version string) *Scanner {
 		analyzers.New(analyzers.OSFileSystem{}),
 		environments.New(environments.OSFileSystem{}),
 		inventory.New(inventory.OSFileSystem{}),
+		dockerinventory.New(dockerinventory.OSRunner{}),
 		clock,
 		version,
 	)
@@ -69,6 +77,7 @@ func NewScannerWithAdapters(
 	analyzer *analyzers.Analyzer,
 	environmentAnalyzer *environments.Analyzer,
 	inventoryInspector *inventory.Inventory,
+	dockerInspector DockerInspector,
 	clock Clock,
 	version string,
 ) *Scanner {
@@ -80,6 +89,7 @@ func NewScannerWithAdapters(
 		analyzer:     analyzer,
 		environments: environmentAnalyzer,
 		inventory:    inventoryInspector,
+		docker:       dockerInspector,
 		clock:        clock,
 		version:      version,
 	}
@@ -105,6 +115,21 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		environments.Config{},
 	)
 	resources, inventoryDiagnostics, completeScopes := scanner.inspectInventory(ctx, config)
+	dockerDiagnostics := []domain.Diagnostic{}
+	if config.DockerInventory {
+		if scanner.docker == nil {
+			dockerDiagnostics = append(dockerDiagnostics, domain.Diagnostic{
+				Code:     "DOCKER_INVENTORY_UNAVAILABLE",
+				Severity: domain.SeverityError,
+				Scope:    "docker-inventory",
+				Message:  "Docker inventory was requested but no inspector is configured",
+			})
+		} else {
+			dockerResult := scanner.docker.Inspect(ctx, dockerinventory.Config{})
+			resources = append(resources, dockerResult.Resources...)
+			dockerDiagnostics = append(dockerDiagnostics, dockerResult.Diagnostics...)
+		}
+	}
 
 	discoveryComplete := len(discoveryResult.Roots) > 0 &&
 		diagnosticsComplete(discoveryResult.Diagnostics) &&
@@ -120,13 +145,14 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		len(config.PreScanDiagnostics)+
 			len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
 			len(environmentResult.Diagnostics)+
-			len(inventoryDiagnostics)+len(correlationResult.Diagnostics),
+			len(inventoryDiagnostics)+len(dockerDiagnostics)+len(correlationResult.Diagnostics),
 	)
 	diagnostics = append(diagnostics, config.PreScanDiagnostics...)
 	diagnostics = append(diagnostics, discoveryResult.Diagnostics...)
 	diagnostics = append(diagnostics, analyzerDiagnostics...)
 	diagnostics = append(diagnostics, environmentResult.Diagnostics...)
 	diagnostics = append(diagnostics, inventoryDiagnostics...)
+	diagnostics = append(diagnostics, dockerDiagnostics...)
 	diagnostics = append(diagnostics, correlationResult.Diagnostics...)
 	sortDiagnostics(diagnostics)
 

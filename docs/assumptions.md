@@ -25,7 +25,8 @@
 4. Durée maximale imposée par la future CLI à chaque adaptateur.
 5. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
 6. Politique de compatibilité macOS du binaire distribué.
-7. Étendue future de la détection Docker au-delà des images JDK reconnues.
+7. Sous-ensemble d'images et de champs Docker Compose à corréler aux ressources
+   du daemon.
 
 ## Clarifications appliquées
 
@@ -53,5 +54,8 @@
 - Les images système Android sont reconstructibles via leur identifiant de
   paquet, mais les AVD restent sensibles et `UNKNOWN` tant qu'une preuve fiable
   d'activité et d'usage n'existe pas.
+- Le signal BuildKit `Reclaimable` et la taille virtuelle d'une image sont des
+  observations Docker ; ils ne constituent ni une taille uniquement
+  récupérable ni une autorisation de nettoyage.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.

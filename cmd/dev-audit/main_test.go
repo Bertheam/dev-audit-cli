@@ -84,6 +84,9 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 || len(captured.JDKRoots) != 1 {
 		t.Fatalf("typed inventory roots not forwarded: %#v", captured)
 	}
+	if !captured.DockerInventory {
+		t.Fatal("Docker inventory should be enabled by default")
+	}
 	if _, err := report.DecodeJSON(stdout.Bytes()); err != nil {
 		t.Fatalf("stdout is not schema-valid JSON: %v\n%s", err, stdout.String())
 	}

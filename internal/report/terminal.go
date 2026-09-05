@@ -101,7 +101,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		}
 	}
 
-	fmt.Fprintf(&output, "\nInstalled HOST resources (%d):\n", len(document.InstalledResources))
+	fmt.Fprintf(&output, "\nLocal inventory resources (%d):\n", len(document.InstalledResources))
 	if len(document.InstalledResources) == 0 {
 		output.WriteString("  (none)\n")
 	}

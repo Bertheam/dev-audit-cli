@@ -14,7 +14,9 @@
 | Secrets dans les configurations | Fuite dans les rapports | Exporter seulement clé et valeur non sensible allowlistée. |
 | Ordre non déterministe | Golden tests instables | Trier toutes les collections avant reporting. |
 | Commande locale imprévisible | Build ou téléchargement implicite | Analyse statique d'abord ; allowlist, timeout et sortie limitée. |
-| Dérive vers Docker/nettoyage | Dilution du test produit | Limiter la Phase 0 à la lecture statique des Dockerfile ; aucun daemon, lancement ou nettoyage. |
+| Inventaire Docker confondu avec nettoyage | Exécution destructive involontaire | Allowlist stricte de commandes de lecture ; aucun `prune`, `rm`, `pull`, `run` ou build. |
 | Toolchain uniquement dans Docker | Faux sentiment que l'application est cassée sur l'hôte | Relations `HOST` et `DOCKER` séparées ; Docker ne devient jamais une installation locale. |
+| Sortie Docker volumineuse ou lente | Scan bloqué ou mémoire excessive | Timeout par commande, timeout global, sortie bornée et budget de ressources. |
+| Métadonnées Docker sensibles | Fuite de commandes, variables ou labels | Demander uniquement ID, référence, état, tailles et dates ; ne jamais collecter commandes, labels, env ou montages. |
 | AVD volumineux mais encore utile | Perte de données d'émulateur ou de scénario de test | Marquer l'AVD sensible et `UNKNOWN` ; ne jamais déduire une action de sa taille seule. |
 | Chemin de module Go provisoire | Renommage d'import avant publication | Fixer l'URL distante avant toute publication ou import public. |

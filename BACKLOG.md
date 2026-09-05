@@ -139,12 +139,17 @@ action de nettoyage proposée.
 ### Lot 8 — Inventaire Docker en lecture seule
 
 - [ ] Étendre l'analyse statique à Docker Compose et aux toolchains non-Java.
-- [ ] Détecter la disponibilité du client et du daemon sans en faire une
+- [x] Détecter la disponibilité du client et du daemon sans en faire une
   condition de réussite du scan.
-- [ ] Inventorier builders, cache BuildKit, images et conteneurs avec budgets de
+- [x] Inventorier builders, cache BuildKit, images et conteneurs avec budgets de
   temps et de sortie.
-- [ ] Séparer strictement déclarations de projet, état local Docker et
+- [x] Séparer strictement déclarations de projet, état local Docker et
   ressources de l'hôte.
+
+Validation intermédiaire sur le Mac 01 : 51 images dédupliquées, 19 conteneurs,
+2 builders et 44 enregistrements de cache BuildKit inventoriés sans diagnostic
+`WARNING` ou `ERROR`. L'analyse Compose et des toolchains non-Java reste ouverte
+avant de fermer le lot.
 
 ### Lot 9 — Classification explicable
 

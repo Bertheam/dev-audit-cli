@@ -82,15 +82,24 @@ identifiant de paquet `sdkmanager`. Un AVD reste toujours `UNKNOWN` à ce stade 
 il est marqué sensible parce que ses disques peuvent contenir des données
 mutables et aucune activité récente fiable n'est encore établie.
 
+L'inventaire Docker local est désormais activé par défaut lorsqu'une CLI Docker
+est présente. Il vérifie si le daemon répond, puis observe les images,
+conteneurs, builders et enregistrements de cache BuildKit par des commandes de
+liste bornées. Les images sont dédupliquées par identifiant ; leur taille
+virtuelle peut partager des couches. Les conteneurs sont marqués sensibles et
+seule la taille de leur couche inscriptible est publiée. Le cache conserve le
+signal `Reclaimable` produit par Docker, accompagné d'un avertissement clair :
+ce signal n'autorise aucune suppression.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
 
 La vision plus large d'origine est conservée dans
-[`docs/vision.md`](docs/vision.md). L'inventaire du daemon et des caches Docker,
-le lancement de conteneurs, le nettoyage, la GUI et le cloud restent
-explicitement hors Phase 0 ; seule la lecture statique des `Dockerfile` est
-incluse pour qualifier l'environnement d'une exigence.
+[`docs/vision.md`](docs/vision.md). Le MVP Phase 0 reste figé ; l'inventaire du
+daemon et des caches Docker appartient aux extensions post-MVP en lecture
+seule. Le lancement de conteneurs, le nettoyage, la GUI et le cloud restent
+hors périmètre actuel.
 
 ## Installer Go sur macOS avec Homebrew
 
@@ -240,6 +249,17 @@ Les racines automatiques sont toujours considérées comme heuristiques. Elles
 permettent d'établir une correspondance positive, mais ne prouvent pas que le
 reste du disque a été couvert. Les statuts `MISSING` exigent donc une racine
 d'inventaire explicite et `NO_REFERENCE_FOUND` une racine de projets explicite.
+
+L'inventaire du daemon Docker est optionnel et activé par défaut :
+
+```bash
+dev-audit scan --docker-inventory=false
+```
+
+Docker absent ou arrêté n'empêche pas le reste du scan et produit seulement un
+diagnostic `INFO`. La CLI n'utilise ni `prune`, ni `rm`, ni `pull`, ni `run`, ni
+commande de build. Elle ne collecte pas les commandes, labels, variables,
+montages ou contenus des conteneurs.
 
 Une exigence peut avoir simultanément deux lectures dans le rapport :
 

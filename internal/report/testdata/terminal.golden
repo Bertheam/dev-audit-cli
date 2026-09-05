@@ -12,7 +12,7 @@ Projects (1):
 - [FLUTTER] "/work/app" (id="project-one")
     - [HOST:MATCHED DOCKER:MATCHED] "flutter"/"flutter_sdk" constraint="3.35.0" confidence=REQUIRED_EXPLICITLY -> "/sdk/flutter"
 
-Installed HOST resources (1):
+Local inventory resources (1):
 - [REFERENCED] "flutter"/"flutter_sdk" version="3.35.0" size=2.0 KiB
     path="/sdk/flutter" id="resource-one"
 
