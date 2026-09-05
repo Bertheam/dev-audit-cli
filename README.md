@@ -1,6 +1,6 @@
 # Dev Environment Auditor
 
-> Statut : MVP CLI 0.1.0 ; validation terrain multi-machines en cours
+> Statut : MVP CLI 0.1.0 validé ; extensions fonctionnelles en cours
 > Plateforme : macOS
 > Périmètre : Flutter et Android
 > Interface cible : CLI `dev-audit`
@@ -74,6 +74,14 @@ l'image est téléchargée ou qu'un conteneur tourne. Une référence d'image
 dynamique reste `UNKNOWN`. Les symlinks ignorés sont résumés une seule fois par
 racine au lieu de produire un diagnostic par lien.
 
+L'extension Android suivante inventorie aussi les images système installées et
+les Android Virtual Devices. Les racines AVD sont recherchées selon les
+variables Android documentées, l'emplacement `~/.android/avd` et la recherche
+profonde bornée. Une image système expose son API, son tag, son ABI et son
+identifiant de paquet `sdkmanager`. Un AVD reste toujours `UNKNOWN` à ce stade :
+il est marqué sensible parce que ses disques peuvent contenir des données
+mutables et aucune activité récente fiable n'est encore établie.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
@@ -115,7 +123,8 @@ go vet ./...
 go test ./cmd/dev-audit
 ```
 
-Version MVP actuelle : `0.1.0-mvp`.
+Version de développement actuelle : `0.2.0-dev`. La baseline MVP distribuée
+localement reste `0.1.0-mvp`.
 
 Validation structurelle du JSON sans Go :
 
@@ -211,6 +220,7 @@ dev-audit scan \
   --auto-detect=false \
   --root /Users/alice/Projects \
   --android-sdk-root /Users/alice/Library/Android/sdk \
+  --android-avd-root /Users/alice/.android/avd \
   --flutter-sdk-root /Users/alice/Developer/flutter \
   --fvm-cache-root /Users/alice/fvm/versions \
   --gradle-user-home /Users/alice/.gradle \
@@ -220,6 +230,11 @@ dev-audit scan \
 Les options de racine et `--exclude` sont répétables. Un type de racine fourni
 explicitement remplace l'auto-détection de cette famille. `--deep-search=false`
 conserve les détections directes sans le parcours approfondi.
+
+Pour les AVD, la détection directe consulte `ANDROID_AVD_HOME`, puis les
+sous-dossiers `avd` de `ANDROID_USER_HOME` et `ANDROID_EMULATOR_HOME`, ainsi que
+`~/.android/avd`. Les pointeurs `.ini` externes ne sont pas suivis : seuls les
+dossiers `*.avd` réellement contenus dans une racine validée sont inventoriés.
 
 Les racines automatiques sont toujours considérées comme heuristiques. Elles
 permettent d'établir une correspondance positive, mais ne prouvent pas que le

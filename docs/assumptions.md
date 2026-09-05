@@ -12,6 +12,9 @@
 - Le rapport par défaut est écrit sur stdout.
 - Un chemin absolu peut être affiché localement, mais ne doit jamais être envoyé
   vers un service distant.
+- Un AVD peut contenir des données applicatives mutables ; sa présence, sa
+  taille ou son ancienneté apparente ne suffisent jamais à autoriser son
+  nettoyage.
 
 ## Décisions ouvertes avant publication
 
@@ -47,5 +50,8 @@
   modifie pas l'environnement audité.
 - `size_bytes` représente uniquement la taille logique complète des fichiers
   réguliers ; la taille allouée APFS est différée.
+- Les images système Android sont reconstructibles via leur identifiant de
+  paquet, mais les AVD restent sensibles et `UNKNOWN` tant qu'une preuve fiable
+  d'activité et d'usage n'existe pas.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.

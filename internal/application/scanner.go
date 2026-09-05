@@ -30,6 +30,7 @@ type Config struct {
 	ProjectRoots        []string
 	Exclusions          []string
 	AndroidSDKRoots     []string
+	AndroidAVDRoots     []string
 	FlutterSDKRoots     []string
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
@@ -177,6 +178,14 @@ func (scanner *Scanner) inspectInventory(
 				{Ecosystem: "android", Component: "ndk"},
 				{Ecosystem: "android", Component: "cmake"},
 			},
+		},
+		{
+			family:     "android_avd",
+			configured: len(config.AndroidAVDRoots) > 0,
+			config: inventory.Config{
+				AndroidAVDRoots: cloneStrings(config.AndroidAVDRoots),
+			},
+			scopes: nil,
 		},
 		{
 			family:     "flutter",

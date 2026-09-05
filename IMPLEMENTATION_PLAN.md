@@ -10,8 +10,10 @@ risque inutile. Le futur dépôt distant devra idéalement être nommé
 
 Le document BSF « Prompt maître Codex — Auditeur d'environnements de
 développement conscient des projets » définit la Phase 0. La vision produit plus
-large reste archivée dans `docs/vision.md`, mais elle n'autorise pas l'ajout de
-Docker, d'un nettoyeur ou d'une interface graphique pendant cette phase.
+large reste archivée dans `docs/vision.md`. Le MVP en lecture seule étant
+validé, les fonctionnalités d'inventaire, de classification et de simulation
+sont maintenant réintroduites par lots, sans ouvrir encore la frontière
+destructive.
 
 ## 2. Approche produit
 
@@ -149,6 +151,14 @@ représenter une ressource qui n'a aucune référence connue.
 | 4 — Correlation | Graphe bidirectionnel, correspondances et inconnues. | Aucune inférence cachée ni faux « inutilisé ». |
 | 5 — Reporting | `scan`, `explain`, terminal, JSON v1 et golden tests. | Schéma stable, sorties déterministes et codes de sortie documentés. |
 | 6 — Validation | Paquet de test sur 10 à 15 machines. | Mesures BSF puis décision GO/PIVOT/STOP. |
+| 7 — Android avancé | Images système et AVD, avec sensibilité explicite. | Détection réelle, lecture seule et aucune fausse recommandation. |
+| 8 — Docker local | Compose, builders, cache, images et conteneurs en lecture seule. | Daemon optionnel, sorties bornées et séparation déclaration/état. |
+| 9 — Classification | Catégories et ancienneté explicables. | Toute catégorie est prouvée ; l'inconnu reste bloquant. |
+| 10 — Simulation | Plan de nettoyage sans exécution. | Impact et estimation visibles ; sensible/inconnu exclus par défaut. |
+
+Les tâches restantes du Lot 6 liées à la publication publique, la signature, la
+notarisation, Homebrew et la validation multi-machines sont des tâches de
+finalisation. Elles seront reprises après les Lots 7 à 10.
 
 ## 8. Invariants transversaux
 
@@ -285,3 +295,18 @@ volontairement privé de Go. La version et un scan JSON ont réussi. Le binaire
 Intel a été vérifié comme Mach-O `x86_64`, mais doit encore être exécuté sur une
 machine Intel réelle. Ces contrôles de paquet sur le Mac 01 ne remplacent pas la
 validation prévue sur 10 à 15 machines.
+
+## 15. Fin du Lot 7
+
+**État au 5 septembre 2026 : gate validé.** L'inventaire Android couvre
+maintenant les images système par API, tag et ABI ainsi que les dossiers AVD.
+Une racine AVD distincte est détectée depuis les variables Android documentées,
+`~/.android/avd` et la recherche profonde bornée. Les pointeurs et symlinks ne
+sont pas suivis.
+
+Les images système exposent leur identifiant de paquet `sdkmanager`. Les AVD
+sont marqués sensibles, restent `UNKNOWN` et ne donnent lieu à aucune action.
+Sur le Mac 01, le scan zéro-configuration a trouvé 2 images système et 1 AVD,
+sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est le Lot 8 —
+Inventaire Docker en lecture seule ; la publication et la validation
+multi-machines restent reportées à la finalisation.

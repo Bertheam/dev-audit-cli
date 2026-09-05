@@ -62,6 +62,7 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 		"--root", "/projects/two",
 		"--exclude", "build",
 		"--android-sdk-root", "/sdk/android",
+		"--android-avd-root", "/sdk/avd",
 		"--flutter-sdk-root", "/sdk/flutter",
 		"--fvm-cache-root", "/cache/fvm",
 		"--gradle-user-home", "/cache/gradle",
@@ -79,7 +80,7 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 	if len(captured.ProjectRoots) != 2 || captured.ProjectRoots[1] != "/projects/two" {
 		t.Fatalf("project roots not forwarded: %#v", captured)
 	}
-	if len(captured.AndroidSDKRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
+	if len(captured.AndroidSDKRoots) != 1 || len(captured.AndroidAVDRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
 		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 || len(captured.JDKRoots) != 1 {
 		t.Fatalf("typed inventory roots not forwarded: %#v", captured)
 	}
@@ -97,7 +98,7 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 	dependencies := commandDependencies{
 		detect: func(_ context.Context, config autodetect.Config) autodetect.Result {
 			detectionCalled = true
-			if !config.NeedProjectRoots || !config.NeedAndroid || !config.NeedFlutter ||
+			if !config.NeedProjectRoots || !config.NeedAndroid || !config.NeedAndroidAVD || !config.NeedFlutter ||
 				!config.NeedFVM || !config.NeedGradle || !config.NeedJDK || !config.DeepSearch {
 				t.Fatalf("unexpected detection config: %#v", config)
 			}
@@ -106,6 +107,7 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 				Roots: autodetect.Roots{
 					ProjectRoots:        []string{path},
 					AndroidSDKRoots:     []string{"/detected/android"},
+					AndroidAVDRoots:     []string{"/detected/avd"},
 					FlutterSDKRoots:     []string{"/detected/flutter"},
 					FVMCacheRoots:       []string{"/detected/fvm"},
 					GradleUserHomeRoots: []string{"/detected/gradle"},
@@ -120,6 +122,7 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 				}},
 				HeuristicInventoryFamilies: []autodetect.Family{
 					autodetect.FamilyAndroid,
+					autodetect.FamilyAndroidAVD,
 					autodetect.FamilyFlutter,
 					autodetect.FamilyGradle,
 					autodetect.FamilyJava,
@@ -146,12 +149,12 @@ func TestScanAutoDetectsEveryOmittedRootFamily(t *testing.T) {
 		t.Fatal("automatic detector was not called")
 	}
 	if len(captured.ProjectRoots) != 1 || captured.ProjectRoots[0] != "/detected/projects" ||
-		len(captured.AndroidSDKRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
+		len(captured.AndroidSDKRoots) != 1 || len(captured.AndroidAVDRoots) != 1 || len(captured.FlutterSDKRoots) != 1 ||
 		len(captured.FVMCacheRoots) != 1 || len(captured.GradleUserHomeRoots) != 1 ||
 		len(captured.JDKRoots) != 1 {
 		t.Fatalf("detected roots not forwarded: %#v", captured)
 	}
-	if !captured.ProjectDiscoveryHeuristic || len(captured.HeuristicInventoryFamilies) != 4 {
+	if !captured.ProjectDiscoveryHeuristic || len(captured.HeuristicInventoryFamilies) != 5 {
 		t.Fatalf("heuristic coverage not forwarded: %#v", captured)
 	}
 	if len(captured.PreScanDiagnostics) != 1 || captured.PreScanDiagnostics[0].Code != "AUTODETECT_ROOT_FOUND" {

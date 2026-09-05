@@ -83,7 +83,12 @@ terminal et JSON possèdent des golden tests ; les codes `0`, `1`, `2` et `3`
 sont couverts. Avec le détecteur de concurrence, la couverture atteint 95,1 %
 pour `internal/application`, 78,2 % pour `internal/report` et 79,3 % pour la CLI.
 
-## Lot 6 — Validation
+## Lot 6 — Distribution et validation finale (reporté)
+
+Les tâches de publication, signature, formule Homebrew et validation
+multi-machines sont volontairement reportées après les extensions
+fonctionnelles ci-dessous. Les paquets locaux restent utilisables pour les
+tests de développement.
 
 - [x] Fournir un installateur local produisant la commande autonome `dev-audit`.
 - [x] Construire les paquets macOS ARM64 et Intel de test.
@@ -111,4 +116,49 @@ Retours du premier Mac :
 - [x] Interdire `MISSING` et `NO_REFERENCE_FOUND` sur couverture heuristique.
 - [x] Réduire le bruit des diagnostics de symlinks à un résumé par racine.
 - [x] Distinguer une toolchain hôte d'une toolchain JDK déclarée par Docker.
-- [ ] Étendre prudemment l'analyse Docker aux toolchains non-Java pertinentes.
+- [ ] Étendre prudemment l’analyse Docker aux toolchains non-Java pertinentes.
+
+## Extensions fonctionnelles post-MVP — ordre courant
+
+### Lot 7 — Inventaire Android avancé
+
+- [x] Découvrir automatiquement les racines AVD documentées et les emplacements
+  non standards trouvés par la recherche profonde bornée.
+- [x] Inventorier les images système Android par API, tag et ABI.
+- [x] Exposer l'identifiant de paquet et le gestionnaire officiel sans exécuter
+  `sdkmanager` ou `avdmanager`.
+- [x] Inventorier et mesurer les dossiers `*.avd` contenus dans la racine sans
+  suivre leurs pointeurs ou symlinks externes.
+- [x] Marquer les AVD sensibles et conserver leur usage à `UNKNOWN`.
+- [x] Valider la découverte zéro-configuration sur le Mac 01.
+
+Gate validé : 2 images système et 1 AVD réels détectés sur le Mac 01 ; tests du
+dépôt et `go vet ./...` réussis ; aucune commande Android exécutée et aucune
+action de nettoyage proposée.
+
+### Lot 8 — Inventaire Docker en lecture seule
+
+- [ ] Étendre l'analyse statique à Docker Compose et aux toolchains non-Java.
+- [ ] Détecter la disponibilité du client et du daemon sans en faire une
+  condition de réussite du scan.
+- [ ] Inventorier builders, cache BuildKit, images et conteneurs avec budgets de
+  temps et de sortie.
+- [ ] Séparer strictement déclarations de projet, état local Docker et
+  ressources de l'hôte.
+
+### Lot 9 — Classification explicable
+
+- [ ] Introduire les catégories `UTILISEE`, `RECONSTRUCTIBLE`, `ANCIENNE`,
+  `ORPHELINE_PROBABLE`, `SENSIBLE` et `INCONNUE` sans transformer l'absence de
+  preuve en recommandation.
+- [ ] Ajouter une politique d'ancienneté configurable et une preuve de dernière
+  utilisation uniquement lorsque la source est fiable.
+- [ ] Distinguer taille occupée et espace potentiellement récupérable.
+
+### Lot 10 — Plan de nettoyage simulé
+
+- [ ] Produire un plan sans exécution, élément par élément, avec impact,
+  commande officielle et estimation conservatrice.
+- [ ] Exclure par défaut toute ressource sensible ou d'usage inconnu.
+- [ ] Ajouter sélection manuelle et format de plan immuable avant toute future
+  primitive d'exécution.

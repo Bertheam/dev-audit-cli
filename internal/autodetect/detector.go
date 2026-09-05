@@ -28,10 +28,11 @@ var errStopSearchRoot = errors.New("stop automatic search root")
 type Family string
 
 const (
-	FamilyAndroid Family = "android"
-	FamilyFlutter Family = "flutter"
-	FamilyGradle  Family = "gradle"
-	FamilyJava    Family = "java"
+	FamilyAndroid    Family = "android"
+	FamilyAndroidAVD Family = "android_avd"
+	FamilyFlutter    Family = "flutter"
+	FamilyGradle     Family = "gradle"
+	FamilyJava       Family = "java"
 )
 
 type Limits struct {
@@ -43,6 +44,7 @@ type Limits struct {
 type Config struct {
 	NeedProjectRoots bool
 	NeedAndroid      bool
+	NeedAndroidAVD   bool
 	NeedFlutter      bool
 	NeedFVM          bool
 	NeedGradle       bool
@@ -54,6 +56,7 @@ type Config struct {
 type Roots struct {
 	ProjectRoots        []string
 	AndroidSDKRoots     []string
+	AndroidAVDRoots     []string
 	FlutterSDKRoots     []string
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
@@ -98,6 +101,7 @@ func NewWithAdapters(fileSystem FileSystem, environment Environment, goos string
 type locatedRoots struct {
 	projects map[string]string
 	android  map[string]string
+	avd      map[string]string
 	flutter  map[string]string
 	fvm      map[string]string
 	gradle   map[string]string
@@ -108,6 +112,7 @@ func newLocatedRoots() *locatedRoots {
 	return &locatedRoots{
 		projects: make(map[string]string),
 		android:  make(map[string]string),
+		avd:      make(map[string]string),
 		flutter:  make(map[string]string),
 		fvm:      make(map[string]string),
 		gradle:   make(map[string]string),
@@ -173,6 +178,7 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 	result.Roots = Roots{
 		ProjectRoots:        sortedKeys(located.projects),
 		AndroidSDKRoots:     sortedKeys(located.android),
+		AndroidAVDRoots:     sortedKeys(located.avd),
 		FlutterSDKRoots:     sortedKeys(located.flutter),
 		FVMCacheRoots:       sortedKeys(located.fvm),
 		GradleUserHomeRoots: sortedKeys(located.gradle),
@@ -181,6 +187,7 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("project", located.projects)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("android", located.android)...)
+	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("android-avd", located.avd)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("flutter", located.flutter)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("fvm", located.fvm)...)
 	result.Diagnostics = append(result.Diagnostics, foundDiagnostics("gradle", located.gradle)...)
@@ -192,6 +199,7 @@ func (detector *Detector) Detect(ctx context.Context, config Config) Result {
 		roots  []string
 	}{
 		{config.NeedAndroid, FamilyAndroid, result.Roots.AndroidSDKRoots},
+		{config.NeedAndroidAVD, FamilyAndroidAVD, result.Roots.AndroidAVDRoots},
 		{config.NeedFlutter || config.NeedFVM, FamilyFlutter, append(cloneStrings(result.Roots.FlutterSDKRoots), result.Roots.FVMCacheRoots...)},
 		{config.NeedGradle, FamilyGradle, result.Roots.GradleUserHomeRoots},
 		{config.NeedJDK, FamilyJava, result.Roots.JDKRoots},
@@ -280,6 +288,18 @@ func (detector *Detector) detectEnvironmentAndConventions(
 		} {
 			detector.addAndroidRoot(located.android, candidate, "conventional location")
 		}
+	}
+
+	if config.NeedAndroidAVD {
+		if value, ok := detector.environment.LookupEnv("ANDROID_AVD_HOME"); ok {
+			detector.addAndroidAVDRoot(located.avd, value, "ANDROID_AVD_HOME")
+		}
+		for _, variable := range []string{"ANDROID_USER_HOME", "ANDROID_EMULATOR_HOME"} {
+			if value, ok := detector.environment.LookupEnv(variable); ok {
+				detector.addAndroidAVDRoot(located.avd, filepath.Join(value, "avd"), variable+"/avd")
+			}
+		}
+		detector.addAndroidAVDRoot(located.avd, filepath.Join(home, ".android", "avd"), "conventional location")
 	}
 
 	if config.NeedFlutter {
@@ -508,6 +528,16 @@ func (detector *Detector) detectLikelyDirectory(
 			detector.addAndroidRoot(located.android, filepath.Dir(path), "bounded deep search")
 		}
 	}
+	if config.NeedAndroidAVD {
+		if lowerName == "avd" && detector.isAndroidAVDRoot(path) {
+			detector.addLocated(located.avd, path, "bounded deep search")
+			return true
+		}
+		if strings.HasSuffix(lowerName, ".avd") && detector.isAndroidAVD(path) {
+			detector.addAndroidAVDRoot(located.avd, filepath.Dir(path), "bounded deep search")
+			return true
+		}
+	}
 	if config.NeedFlutter && (lowerName == "flutter" || lowerName == "flutter-sdk") && detector.isFlutterSDK(path) {
 		detector.addLocated(located.flutter, path, "bounded deep search")
 		return true
@@ -700,6 +730,15 @@ func (detector *Detector) addAndroidRoot(roots map[string]string, candidate, sou
 	return true
 }
 
+func (detector *Detector) addAndroidAVDRoot(roots map[string]string, candidate, source string) bool {
+	candidate = detector.canonicalCandidate(candidate)
+	if candidate == "" || !detector.isAndroidAVDRoot(candidate) {
+		return false
+	}
+	detector.addLocated(roots, candidate, source)
+	return true
+}
+
 func (detector *Detector) addFlutterRoot(roots map[string]string, candidate, source string) bool {
 	candidate = detector.canonicalCandidate(candidate)
 	if candidate == "" || !detector.isFlutterSDK(candidate) {
@@ -873,6 +912,26 @@ func (detector *Detector) isAndroidSDK(root string) bool {
 		}
 	}
 	return found >= 2
+}
+
+func (detector *Detector) isAndroidAVDRoot(root string) bool {
+	entries, err := detector.fileSystem.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Type()&fs.ModeSymlink != 0 || !entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".avd") {
+			continue
+		}
+		if detector.isAndroidAVD(filepath.Join(root, entry.Name())) {
+			return true
+		}
+	}
+	return false
+}
+
+func (detector *Detector) isAndroidAVD(root string) bool {
+	return detector.isRegularFile(filepath.Join(root, "config.ini"))
 }
 
 func (detector *Detector) isFlutterSDK(root string) bool {

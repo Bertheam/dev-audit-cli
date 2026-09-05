@@ -36,6 +36,7 @@ type Limits struct {
 
 type Config struct {
 	AndroidSDKRoots     []string
+	AndroidAVDRoots     []string
 	FlutterSDKRoots     []string
 	FVMCacheRoots       []string
 	GradleUserHomeRoots []string
@@ -101,6 +102,7 @@ func (inventory *Inventory) Inspect(ctx context.Context, config Config) Result {
 		paths []string
 	}{
 		{kind: rootAndroidSDK, paths: config.AndroidSDKRoots},
+		{kind: rootAndroidAVD, paths: config.AndroidAVDRoots},
 		{kind: rootFlutterSDK, paths: config.FlutterSDKRoots},
 		{kind: rootFVMCache, paths: config.FVMCacheRoots},
 		{kind: rootGradleUserHome, paths: config.GradleUserHomeRoots},
@@ -133,6 +135,8 @@ func (inventory *Inventory) Inspect(ctx context.Context, config Config) Result {
 			switch group.kind {
 			case rootAndroidSDK:
 				inventory.inspectAndroidRoot(ctx, root, limits, builder, &result)
+			case rootAndroidAVD:
+				inventory.inspectAndroidAVDRoot(ctx, root, limits, builder, &result)
 			case rootFlutterSDK:
 				inventory.inspectFlutterSDK(ctx, root, "explicit_flutter_root", limits, builder, &result)
 			case rootFVMCache:
@@ -155,6 +159,7 @@ type rootKind string
 
 const (
 	rootAndroidSDK     rootKind = "android_sdk"
+	rootAndroidAVD     rootKind = "android_avd"
 	rootFlutterSDK     rootKind = "flutter_sdk"
 	rootFVMCache       rootKind = "fvm_cache"
 	rootGradleUserHome rootKind = "gradle_user_home"
@@ -162,7 +167,7 @@ const (
 )
 
 func totalConfiguredRoots(config Config) int {
-	return len(config.AndroidSDKRoots) + len(config.FlutterSDKRoots) +
+	return len(config.AndroidSDKRoots) + len(config.AndroidAVDRoots) + len(config.FlutterSDKRoots) +
 		len(config.FVMCacheRoots) + len(config.GradleUserHomeRoots) + len(config.JDKRoots)
 }
 

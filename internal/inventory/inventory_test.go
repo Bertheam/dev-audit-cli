@@ -90,6 +90,62 @@ func TestInspectExplicitAndroidFlutterFVMAndJDKRoots(t *testing.T) {
 	}
 }
 
+func TestInventoryAndroidSystemImagesAndAVDs(t *testing.T) {
+	base := t.TempDir()
+	androidRoot := filepath.Join(base, "android-sdk")
+	imagePath := filepath.Join(androidRoot, "system-images", "android-37.1", "google_apis", "arm64-v8a")
+	writeInventoryFixture(t, filepath.Join(imagePath, "source.properties"), "Pkg.Path=system-images;android-37.1;google_apis;arm64-v8a\n")
+	writeInventoryFixture(t, filepath.Join(imagePath, "system.img"), "synthetic-system-image")
+
+	avdRoot := filepath.Join(base, ".android", "avd")
+	avdPath := filepath.Join(avdRoot, "Pixel_8_API_35.avd")
+	writeInventoryFixture(t, filepath.Join(avdPath, "config.ini"), strings.Join([]string{
+		"AvdId=Pixel_8_API_35",
+		"target=android-35",
+		"tag.id=google_apis",
+		"abi.type=arm64-v8a",
+		"hw.device.name=pixel_8",
+		"image.sysdir.1=system-images/android-35/google_apis/arm64-v8a/",
+	}, "\n"))
+	writeInventoryFixture(t, filepath.Join(avdPath, "userdata-qemu.img"), "mutable-user-data")
+
+	result := New(OSFileSystem{}).Inspect(context.Background(), Config{
+		AndroidSDKRoots: []string{androidRoot},
+		AndroidAVDRoots: []string{avdRoot},
+	})
+
+	image := findResource(result.Resources, "android", "android_system_image", "android-37.1/google_apis/arm64-v8a")
+	if image == nil || !hasMetadata(image.Metadata, "package_path", "system-images;android-37.1;google_apis;arm64-v8a") ||
+		!hasMetadata(image.Metadata, "management", "sdkmanager") {
+		t.Fatalf("unexpected Android system image resource: %#v", image)
+	}
+	avd := findResource(result.Resources, "android", "android_avd", "android-35")
+	if avd == nil || !hasMetadata(avd.Metadata, "sensitivity", "sensitive_mutable_user_data") ||
+		!hasMetadata(avd.Metadata, "management", "avdmanager") || avd.ReferenceStatus != domain.ReferenceUnknown {
+		t.Fatalf("unexpected Android AVD resource: %#v", avd)
+	}
+	if len(avd.Warnings) < 2 || avd.SizeBytes == nil || *avd.SizeBytes != logicalRegularSize(t, avdPath) {
+		t.Fatalf("AVD safety or size information is missing: %#v", avd)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", result.Diagnostics)
+	}
+}
+
+func TestInventoryAndroidAVDDoesNotFollowCandidateSymlink(t *testing.T) {
+	root := t.TempDir()
+	external := filepath.Join(t.TempDir(), "External.avd")
+	writeInventoryFixture(t, filepath.Join(external, "config.ini"), "target=android-35\n")
+	if err := os.Symlink(external, filepath.Join(root, "Linked.avd")); err != nil {
+		t.Fatalf("create AVD symlink: %v", err)
+	}
+
+	result := New(OSFileSystem{}).Inspect(context.Background(), Config{AndroidAVDRoots: []string{root}})
+	if len(result.Resources) != 0 || !hasInventoryDiagnostic(result.Diagnostics, "INVENTORY_SYMLINK_CANDIDATE_SKIPPED") {
+		t.Fatalf("AVD symlink must not be followed: %#v", result)
+	}
+}
+
 func TestInventoryLeavesFilesUnchanged(t *testing.T) {
 	fixture := createInventoryFixture(t)
 	before := snapshotInventoryFiles(t, fixture.root)

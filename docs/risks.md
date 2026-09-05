@@ -16,4 +16,5 @@
 | Commande locale imprévisible | Build ou téléchargement implicite | Analyse statique d'abord ; allowlist, timeout et sortie limitée. |
 | Dérive vers Docker/nettoyage | Dilution du test produit | Limiter la Phase 0 à la lecture statique des Dockerfile ; aucun daemon, lancement ou nettoyage. |
 | Toolchain uniquement dans Docker | Faux sentiment que l'application est cassée sur l'hôte | Relations `HOST` et `DOCKER` séparées ; Docker ne devient jamais une installation locale. |
+| AVD volumineux mais encore utile | Perte de données d'émulateur ou de scénario de test | Marquer l'AVD sensible et `UNKNOWN` ; ne jamais déduire une action de sa taille seule. |
 | Chemin de module Go provisoire | Renommage d'import avant publication | Fixer l'URL distante avant toute publication ou import public. |

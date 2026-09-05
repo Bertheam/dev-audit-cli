@@ -17,7 +17,7 @@ import (
 	"dev-environment-auditor/internal/report"
 )
 
-var version = "0.1.0-mvp"
+var version = "0.2.0-dev"
 
 const (
 	defaultScanTimeout   = 30 * time.Second
@@ -112,6 +112,7 @@ func runScan(
 	var projectRoots stringListFlag
 	var exclusions stringListFlag
 	var androidRoots stringListFlag
+	var androidAVDRoots stringListFlag
 	var flutterRoots stringListFlag
 	var fvmRoots stringListFlag
 	var gradleRoots stringListFlag
@@ -124,6 +125,7 @@ func runScan(
 	flags.Var(&projectRoots, "root", "project search root; repeatable; auto-detected when omitted")
 	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
 	flags.Var(&androidRoots, "android-sdk-root", "Android SDK inventory root; repeatable")
+	flags.Var(&androidAVDRoots, "android-avd-root", "Android AVD inventory root; repeatable")
 	flags.Var(&flutterRoots, "flutter-sdk-root", "direct Flutter SDK root; repeatable")
 	flags.Var(&fvmRoots, "fvm-cache-root", "FVM cache root whose children are SDKs; repeatable")
 	flags.Var(&gradleRoots, "gradle-user-home", "Gradle user-home inventory root; repeatable")
@@ -164,6 +166,7 @@ func runScan(
 		detected := dependencies.detect(ctx, autodetect.Config{
 			NeedProjectRoots: len(projectRoots) == 0,
 			NeedAndroid:      len(androidRoots) == 0,
+			NeedAndroidAVD:   len(androidAVDRoots) == 0,
 			NeedFlutter:      needFlutterFamily,
 			NeedFVM:          needFlutterFamily,
 			NeedGradle:       len(gradleRoots) == 0,
@@ -177,6 +180,9 @@ func runScan(
 		}
 		if len(androidRoots) == 0 {
 			androidRoots = append(androidRoots, detected.Roots.AndroidSDKRoots...)
+		}
+		if len(androidAVDRoots) == 0 {
+			androidAVDRoots = append(androidAVDRoots, detected.Roots.AndroidAVDRoots...)
 		}
 		if needFlutterFamily {
 			flutterRoots = append(flutterRoots, detected.Roots.FlutterSDKRoots...)
@@ -205,6 +211,7 @@ func runScan(
 		ProjectRoots:               []string(projectRoots),
 		Exclusions:                 []string(exclusions),
 		AndroidSDKRoots:            []string(androidRoots),
+		AndroidAVDRoots:            []string(androidAVDRoots),
 		FlutterSDKRoots:            []string(flutterRoots),
 		FVMCacheRoots:              []string(fvmRoots),
 		GradleUserHomeRoots:        []string(gradleRoots),

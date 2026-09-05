@@ -1,6 +1,6 @@
 # ADR 0007 — Inventaire explicite et taille logique
 
-- Statut : accepté, complété par l'ADR 0010
+- Statut : accepté, complété par les ADR 0010 et 0012
 - Date : 2026-09-02
 
 ## Contexte
@@ -72,7 +72,7 @@ l'appelant borne la durée.
 
 ## Conséquences
 
-L'inventaire est déterministe, local et testable sans dépendance externe. Il ne
-couvre pas encore les images système Android, AVD, chemins automatiques ou
-métriques APFS allouées. Ces éléments ne seront ajoutés que s'ils servent la
-carte projet–toolchain sans créer une fausse estimation d'espace récupérable.
+L'inventaire initial est déterministe, local et testable sans dépendance
+externe. L'ADR 0010 a ajouté les chemins automatiques et l'ADR 0012 les images
+système Android ainsi que les AVD. Les métriques APFS allouées restent
+différées.

@@ -93,6 +93,45 @@ func TestDetectUsesEnvironmentPathAndConventionalLocations(t *testing.T) {
 	}
 }
 
+func TestDetectAndroidAVDUsesOfficialEnvironmentAndConventionOrder(t *testing.T) {
+	home := t.TempDir()
+	environmentRoot := filepath.Join(home, "custom-avds")
+	createAndroidAVD(t, filepath.Join(environmentRoot, "Pixel_9_API_35.avd"))
+	conventionalRoot := filepath.Join(home, ".android", "avd")
+	createAndroidAVD(t, filepath.Join(conventionalRoot, "Pixel_8_API_34.avd"))
+
+	detector := NewWithAdapters(osFileSystem{}, fakeEnvironment{
+		home:       home,
+		workingDir: home,
+		variables: map[string]string{
+			"ANDROID_AVD_HOME": environmentRoot,
+		},
+		executables: map[string]string{},
+	}, "test")
+	result := detector.Detect(context.Background(), Config{NeedAndroidAVD: true, DeepSearch: false})
+
+	assertPaths(t, result.Roots.AndroidAVDRoots, conventionalRoot, environmentRoot)
+	assertFamilies(t, result.HeuristicInventoryFamilies, FamilyAndroidAVD)
+	if countDiagnostic(result.Diagnostics, "AUTODETECT_ROOT_FOUND") != 2 {
+		t.Fatalf("unexpected AVD detection diagnostics: %#v", result.Diagnostics)
+	}
+}
+
+func TestDetectAndroidAVDDeepSearchFindsNonstandardRoot(t *testing.T) {
+	home := t.TempDir()
+	avdRoot := filepath.Join(home, "Documents", "emulators", "profiles")
+	createAndroidAVD(t, filepath.Join(avdRoot, "Tablet_API_35.avd"))
+	detector := NewWithAdapters(osFileSystem{}, fakeEnvironment{
+		home:        home,
+		workingDir:  home,
+		variables:   map[string]string{},
+		executables: map[string]string{},
+	}, "test")
+
+	result := detector.Detect(context.Background(), Config{NeedAndroidAVD: true, DeepSearch: true})
+	assertPaths(t, result.Roots.AndroidAVDRoots, avdRoot)
+}
+
 func TestDetectDeepSearchFindsNonstandardRootsAndFiltersFlutterSDKProject(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(home, "Documents", "clients", "nested", "mobile-app")
@@ -231,6 +270,11 @@ func createAndroidSDK(t *testing.T, root string) {
 	t.Helper()
 	createDirectory(t, filepath.Join(root, "platforms"))
 	createDirectory(t, filepath.Join(root, "build-tools"))
+}
+
+func createAndroidAVD(t *testing.T, root string) {
+	t.Helper()
+	writeFile(t, filepath.Join(root, "config.ini"), "target=android-35\n")
 }
 
 func createJDK(t *testing.T, root string) {
