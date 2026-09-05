@@ -75,7 +75,16 @@ func TestInventoryXcodeAndCoreSimulatorResources(t *testing.T) {
 		t.Fatalf("component download must be protected as mutable: %#v", download)
 	}
 	for _, resource := range first.Resources {
-		if resource.SizeBytes == nil || *resource.SizeBytes != logicalRegularSize(t, resource.Path) || resource.ReferenceStatus != domain.ReferenceUnknown {
+		if resource.ReferenceStatus != domain.ReferenceUnknown {
+			t.Fatalf("unexpected Apple resource measurement: %#v", resource)
+		}
+		if resource.Component == "apple_simulator_runtime" {
+			if resource.SizeBytes != nil || !hasMetadata(resource.Metadata, "size_status", "skipped_high_cardinality_runtime_tree") {
+				t.Fatalf("runtime tree should be inventoried without an expensive traversal: %#v", resource)
+			}
+			continue
+		}
+		if resource.SizeBytes == nil || *resource.SizeBytes != logicalRegularSize(t, resource.Path) {
 			t.Fatalf("unexpected Apple resource measurement: %#v", resource)
 		}
 	}

@@ -149,6 +149,11 @@ téléchargements de composants observables et les Command Line Tools. Les
 simulateurs sont `SENSIBLE + INCONNUE`; un téléchargement reste potentiellement
 actif et aucune ressource Apple ne reçoit d'action de planification.
 
+La sortie terminal porte une identité compacte — `◆ dev-audit` — commune au
+scan et à la revue de plan. Elle reste volontairement sans séquence de couleur
+ANSI afin de demeurer propre dans un pipe, un fichier ou un journal. Les
+contrats JSON et la sortie scriptable de `dev-audit version` ne changent pas.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
@@ -318,6 +323,9 @@ leurs marqueurs structurels. Une application Xcode non standard placée sous un
 dossier de développement peut aussi être retrouvée par la recherche profonde
 bornée. La CLI lit uniquement le système de fichiers : l'état « booted » d'un
 simulateur et la progression exacte d'un téléchargement restent inconnus.
+Les arbres montés des runtimes, qui contiennent plusieurs centaines de milliers
+de fichiers, ne sont pas parcourus pour calculer une taille : le runtime est
+inventorié, mais sa taille reste inconnue plutôt que lente ou partielle.
 
 L'inventaire du daemon Docker est optionnel et activé par défaut :
 

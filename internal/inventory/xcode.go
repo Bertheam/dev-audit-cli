@@ -220,13 +220,23 @@ func (inventory *Inventory) inspectSimulatorRuntimes(
 			continue
 		}
 		version := safeAppleName(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
-		inventory.addMeasuredResource(ctx, "apple", "apple_simulator_runtime", optionalString(version), path,
+		builder.add(
+			"apple",
+			"apple_simulator_runtime",
+			optionalString(version),
+			path,
+			nil,
 			[]domain.MetadataEntry{
 				metadataEntry("inventory_source", "core_simulator_runtime"),
 				metadataEntry("management", "xcode_components"),
+				metadataEntry("size_metric", "not_measured"),
+				metadataEntry("size_status", "skipped_high_cardinality_runtime_tree"),
 			},
-			[]string{"runtime availability and active use were not inferred; manage runtimes through Xcode Components"},
-			limits, builder, result)
+			[]string{
+				"runtime availability and active use were not inferred; manage runtimes through Xcode Components",
+				"runtime tree was not traversed because mounted simulator images contain very large file counts",
+			},
+		)
 	}
 }
 

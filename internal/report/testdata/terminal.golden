@@ -1,5 +1,6 @@
-Dev Environment Auditor "test-version"
-Read-only scan: "2026-09-02T20:00:00Z" -> "2026-09-02T20:00:01Z"
+◆ dev-audit // macOS development map
+  version="test-version"  mode=READ_ONLY
+Scan window: "2026-09-02T20:00:00Z" -> "2026-09-02T20:00:01Z"
 Age policy: ANCIENNE after 180 days using trusted last-use evidence only
 Roots (2):
   - "/work/a"

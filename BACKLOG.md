@@ -211,10 +211,26 @@ détecteur de concurrence, `go vet`, schéma embarqué et installation réelle d
   classé reconstructible et inconnu.
 - [x] Valider déterminisme, tailles logiques, budgets, symlinks et invariance
   des fixtures.
-- [ ] Exécuter le gate réel sur le Mac 01 après la fin du téléchargement du
+- [x] Exécuter le gate réel sur le Mac 01 après la fin du téléchargement du
   runtime iOS 26.5 par Xcode.
-- [ ] Comparer l'inventaire au panneau Xcode Settings > Components et au Device
+- [x] Comparer l'inventaire au panneau Xcode Settings > Components et au Device
   Hub, sans lancer ni supprimer de simulateur.
 
-Implémentation terminée sur fixtures ; validation réelle volontairement différée
-pour ne pas interférer avec l'installation actuellement active du runtime.
+Gate validé sur le Mac 01 après la fin du téléchargement : le scan sans chemin
+et avec son timeout par défaut trouve 8 runtimes disponibles et 11 appareils,
+exactement comme les listes officielles CoreSimulator ; aucun appareil n'est
+booté. Il inventorie 39 ressources Apple au total, sans `WARNING` ou `ERROR`.
+Les arbres montés des runtimes ne sont volontairement pas parcourus : leur très
+grand nombre de fichiers rendait le scan lent et produisait des tailles
+incomplètes. Leur taille reste honnêtement inconnue en attendant une métrique de
+stockage physique fiable.
+
+### Lot 12 — Identité terminal légère
+
+- [x] Ajouter une signature visuelle compacte à `scan` et `plan`.
+- [x] Personnaliser les aides des commandes sans modifier leur syntaxe.
+- [x] Conserver des sorties sans séquences ANSI pour les pipes et journaux.
+- [x] Ne modifier ni le contrat JSON ni le comportement scriptable de `version`.
+
+Gate validé : golden terminal, tests de plan, échappement des caractères de
+contrôle et installation réelle de `dev-audit 0.3.0-dev` réussis.

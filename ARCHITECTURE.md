@@ -199,6 +199,13 @@ des clés allowlistées. Un plist binaire ou malformé ne déclenche aucune
 interprétation de remplacement. Ce lot n'appelle ni Xcode, ni `xcodebuild`, ni
 `simctl`, et n'ajoute aucune action Apple au plan simulé.
 
+Un bundle de runtime monté est détecté par son enveloppe et son nom, mais son
+arbre n'est pas mesuré. Sur le Mac de validation, chacun dépassait 500 000
+entrées ; répéter ce parcours pour chaque version pénalisait fortement la
+commande par défaut et ne décrivait pas fidèlement l'espace physique APFS. La
+métadonnée `size_status=skipped_high_cardinality_runtime_tree` rend cette
+absence explicite.
+
 La métrique `size_bytes` est la somme logique des fichiers réguliers. Les
 symlinks ne sont pas suivis. Dès qu'une permission, une limite ou l'annulation
 rend le parcours incomplet, la taille est absente et un diagnostic explique la
@@ -300,6 +307,10 @@ terminal affiche séparément `observed_size` et `potentially_reclaimable`, puis
 estimation. Le second schéma embarqué `cleanup-plan-v1.schema.json` valide les
 plans simulés. Leur décodage recalcule aussi l'identifiant de contenu afin de
 rejeter toute altération après création.
+
+Les rapports terminal de scan et de plan partagent la signature `◆ dev-audit`.
+Elle n'utilise aucune séquence ANSI : le rendu reste déterministe, testable et
+adapté à la redirection. Le JSON n'hérite d'aucun élément de présentation.
 
 ### `internal/platform`
 

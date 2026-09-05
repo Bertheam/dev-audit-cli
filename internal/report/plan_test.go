@@ -54,7 +54,8 @@ func TestCleanupPlanTerminalMakesSimulationAndRisksExplicit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"SIMULATION_ONLY (nothing was executed)",
+		"◆ dev-audit // cleanup review",
+		"mode=SIMULATION_ONLY  status=NOT_EXECUTED",
 		"command_not_executed=[\"docker\", \"buildx\", \"prune\", \"--filter\", \"id=cache123456789\"]",
 		"explicit_confirmation_required=true",
 		"risks=ANCIENNE,ORPHELINE_PROBABLE,RECONSTRUCTIBLE",

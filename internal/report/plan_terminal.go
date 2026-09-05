@@ -15,8 +15,8 @@ func RenderPlanTerminal(plan domain.CleanupPlan) ([]byte, error) {
 		return nil, fmt.Errorf("validate cleanup plan: %w", err)
 	}
 	var output strings.Builder
-	fmt.Fprintf(&output, "Dev Environment Auditor cleanup plan %s\n", terminalValue(plan.ToolVersion))
-	fmt.Fprintf(&output, "Mode: %s (nothing was executed)\n", plan.Mode)
+	output.WriteString("◆ dev-audit // cleanup review\n")
+	fmt.Fprintf(&output, "  version=%s  mode=%s  status=NOT_EXECUTED\n", terminalValue(plan.ToolVersion), plan.Mode)
 	fmt.Fprintf(&output, "Plan ID: %s\n", terminalValue(plan.PlanID))
 	fmt.Fprintf(&output, "Source report SHA-256: %s\n", terminalValue(plan.SourceReportSHA256))
 	fmt.Fprintf(&output, "Source scan completed: %s\n", terminalValue(plan.SourceScanCompleted))

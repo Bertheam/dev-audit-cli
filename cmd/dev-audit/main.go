@@ -522,6 +522,8 @@ func hasErrorDiagnostic(diagnostics []domain.Diagnostic) bool {
 }
 
 func printRootUsage(output io.Writer) {
+	fmt.Fprintln(output, "dev-audit — map first, reclaim space only with proof.")
+	fmt.Fprintln(output)
 	fmt.Fprintln(output, "Usage:")
 	fmt.Fprintln(output, "  dev-audit scan [--root PATH] [options]")
 	fmt.Fprintln(output, "  dev-audit explain --report FILE ID [--output FILE]")
@@ -530,15 +532,21 @@ func printRootUsage(output io.Writer) {
 }
 
 func printScanUsage(output io.Writer) {
+	fmt.Fprintln(output, "dev-audit — evidence-first inventory for macOS development environments.")
+	fmt.Fprintln(output)
 	fmt.Fprintln(output, "Usage: dev-audit scan [--root PATH ...] [options]")
 	fmt.Fprintln(output, "Omitted roots are detected locally; use --auto-detect=false for explicit-only mode.")
 }
 
 func printExplainUsage(output io.Writer) {
+	fmt.Fprintln(output, "dev-audit — inspect the evidence behind one report item.")
+	fmt.Fprintln(output)
 	fmt.Fprintln(output, "Usage: dev-audit explain --report FILE ID [--output FILE]")
 }
 
 func printPlanUsage(output io.Writer) {
+	fmt.Fprintln(output, "dev-audit — review a cleanup simulation; nothing is executed.")
+	fmt.Fprintln(output)
 	fmt.Fprintln(output, "Usage: dev-audit plan --report FILE [--resource ID ...] [--format terminal|json] [--output NEW_FILE]")
 	fmt.Fprintln(output, "Without --resource, only conservative default-safe candidates are selected. No command is executed.")
 }

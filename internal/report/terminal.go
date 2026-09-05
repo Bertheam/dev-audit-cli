@@ -30,8 +30,9 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	}
 
 	var output strings.Builder
-	fmt.Fprintf(&output, "Dev Environment Auditor %s\n", terminalValue(document.ToolVersion))
-	fmt.Fprintf(&output, "Read-only scan: %s -> %s\n", terminalValue(document.Scan.StartedAt), terminalValue(document.Scan.CompletedAt))
+	output.WriteString("◆ dev-audit // macOS development map\n")
+	fmt.Fprintf(&output, "  version=%s  mode=READ_ONLY\n", terminalValue(document.ToolVersion))
+	fmt.Fprintf(&output, "Scan window: %s -> %s\n", terminalValue(document.Scan.StartedAt), terminalValue(document.Scan.CompletedAt))
 	if document.Scan.ClassificationPolicy != nil {
 		fmt.Fprintf(&output, "Age policy: ANCIENNE after %d days using trusted last-use evidence only\n",
 			document.Scan.ClassificationPolicy.OldAfterDays)

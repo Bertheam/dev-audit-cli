@@ -437,3 +437,22 @@ Les tests déterministes sur fixtures couvrent les deux emplacements de runtime,
 les appareils, composants, tailles et invariance des fichiers. Le gate réel du
 Mac 01 est reporté jusqu'à la fin du téléchargement du runtime iOS 26.5 afin de
 ne pas ajouter de charge ou d'ambiguïté pendant une installation active.
+
+Après la fin du téléchargement, le gate réel a retrouvé 8 runtimes et 11
+appareils, identiques aux listes `simctl`; les 11 appareils sont disponibles et
+aucun n'est booté. Le premier passage a aussi révélé que chaque arbre de runtime
+monté dépassait 500 000 entrées. La mesure récursive de ces arbres a donc été
+supprimée : l'identité du runtime reste visible, sa taille porte explicitement
+un statut non mesuré, et le scan complet termine désormais avec le timeout de
+30 secondes par défaut sans `WARNING` ni `ERROR`.
+
+## 20. Lot 12 — touche visuelle terminal
+
+Une signature sobre `◆ dev-audit` identifie maintenant les rapports humains de
+scan et de plan. Le sous-titre distingue la carte du Mac de la revue d'un plan,
+et les modes `READ_ONLY` ou `SIMULATION_ONLY` sont visibles immédiatement. Les
+aides ont reçu une courte phrase décrivant la promesse du produit.
+
+Cette présentation n'utilise pas de couleurs ANSI, afin de ne pas polluer les
+redirections et les journaux. `dev-audit version` reste une valeur brute pour
+les scripts, et aucun champ JSON ou invariant de domaine n'a changé.
