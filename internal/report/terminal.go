@@ -8,7 +8,7 @@ import (
 	"dev-environment-auditor/internal/domain"
 )
 
-const safetyNotice = "NO_REFERENCE_FOUND means no reference was found in the analyzed coverage; it never means safe to delete."
+const safetyNotice = "NO_REFERENCE_FOUND means no reference was found in the analyzed coverage; it never means safe to delete. Classifications and potentially reclaimable space are observations, not cleanup recommendations."
 
 // RenderTerminal returns a deterministic, escape-safe human-readable report.
 func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
@@ -32,6 +32,10 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	var output strings.Builder
 	fmt.Fprintf(&output, "Dev Environment Auditor %s\n", terminalValue(document.ToolVersion))
 	fmt.Fprintf(&output, "Read-only scan: %s -> %s\n", terminalValue(document.Scan.StartedAt), terminalValue(document.Scan.CompletedAt))
+	if document.Scan.ClassificationPolicy != nil {
+		fmt.Fprintf(&output, "Age policy: ANCIENNE after %d days using trusted last-use evidence only\n",
+			document.Scan.ClassificationPolicy.OldAfterDays)
+	}
 	fmt.Fprintf(&output, "Roots (%d):\n", len(document.Scan.Roots))
 	for _, root := range document.Scan.Roots {
 		fmt.Fprintf(&output, "  - %s\n", terminalValue(root))
@@ -44,6 +48,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		domain.EnvironmentDockerDaemon: {},
 	}
 	resourceCounts := map[domain.ReferenceStatus]int{}
+	classificationCounts := map[domain.ResourceCategory]int{}
 	for _, project := range document.Projects {
 		requirementCount += len(project.Requirements)
 	}
@@ -52,6 +57,9 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	}
 	for _, resource := range document.InstalledResources {
 		resourceCounts[resource.ReferenceStatus]++
+		for _, classification := range resource.Classifications {
+			classificationCounts[classification.Category]++
+		}
 	}
 	fmt.Fprintf(&output,
 		"Summary: %d projects, %d requirements, %d resources, %d diagnostics\n",
@@ -64,6 +72,12 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		"Resources: REFERENCED=%d NO_REFERENCE_FOUND=%d UNKNOWN=%d\n",
 		resourceCounts[domain.Referenced], resourceCounts[domain.NoReferenceFound],
 		resourceCounts[domain.ReferenceUnknown],
+	)
+	fmt.Fprintf(&output,
+		"Classifications: UTILISEE=%d RECONSTRUCTIBLE=%d ANCIENNE=%d ORPHELINE_PROBABLE=%d SENSIBLE=%d INCONNUE=%d\n",
+		classificationCounts[domain.CategoryUsed], classificationCounts[domain.CategoryReconstructible],
+		classificationCounts[domain.CategoryOld], classificationCounts[domain.CategoryProbableOrphan],
+		classificationCounts[domain.CategorySensitive], classificationCounts[domain.CategoryUnknown],
 	)
 
 	fmt.Fprintf(&output, "\nProjects (%d):\n", len(document.Projects))
@@ -110,14 +124,16 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 		output.WriteString("  (none)\n")
 	}
 	for _, resource := range document.InstalledResources {
-		fmt.Fprintf(&output, "- [%s] %s/%s version=%s size=%s\n",
+		fmt.Fprintf(&output, "- [%s] %s/%s version=%s observed_size=%s potentially_reclaimable=%s\n",
 			resource.ReferenceStatus,
 			terminalValue(resource.Ecosystem),
 			terminalValue(resource.Component),
 			optionalTerminalValue(resource.Version),
 			formatSize(resource.SizeBytes),
+			formatSpaceEstimate(resource.PotentiallyReclaimable),
 		)
 		fmt.Fprintf(&output, "    path=%s id=%s\n", terminalValue(resource.Path), terminalValue(resource.ID))
+		fmt.Fprintf(&output, "    classifications=%s\n", formatCategories(resource.Classifications))
 	}
 
 	fmt.Fprintf(&output, "\nDiagnostics (%d):\n", len(document.Diagnostics))
@@ -209,4 +225,22 @@ func formatSize(size *int64) string {
 		unitIndex++
 	}
 	return fmt.Sprintf("%.1f %s", value, units[unitIndex])
+}
+
+func formatSpaceEstimate(estimate *domain.SpaceEstimate) string {
+	if estimate == nil {
+		return "unknown"
+	}
+	return formatSize(&estimate.Bytes)
+}
+
+func formatCategories(classifications []domain.ResourceClassification) string {
+	if len(classifications) == 0 {
+		return "not-recorded"
+	}
+	categories := make([]string, 0, len(classifications))
+	for _, classification := range classifications {
+		categories = append(categories, string(classification.Category))
+	}
+	return strings.Join(categories, ",")
 }

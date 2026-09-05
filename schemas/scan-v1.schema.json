@@ -65,7 +65,8 @@
           "type": "array",
           "items": {"type": "string"}
         },
-        "read_only": {"const": true}
+        "read_only": {"const": true},
+        "classification_policy": {"$ref": "#/$defs/classificationPolicy"}
       }
     },
     "project": {
@@ -112,12 +113,56 @@
         "version": {"type": "string"},
         "path": {"type": "string", "minLength": 1},
         "size_bytes": {"type": "integer", "minimum": 0},
+        "potentially_reclaimable": {"$ref": "#/$defs/spaceEstimate"},
         "reference_status": {"enum": ["REFERENCED", "NO_REFERENCE_FOUND", "UNKNOWN"]},
+        "classifications": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/resourceClassification"}
+        },
         "metadata": {
           "type": "array",
           "items": {"$ref": "#/$defs/metadataEntry"}
         },
         "warnings": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "classificationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["old_after_days"],
+      "properties": {
+        "old_after_days": {"type": "integer", "minimum": 1}
+      }
+    },
+    "resourceClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "rationale", "evidence"],
+      "properties": {
+        "category": {
+          "enum": ["UTILISEE", "RECONSTRUCTIBLE", "ANCIENNE", "ORPHELINE_PROBABLE", "SENSIBLE", "INCONNUE"]
+        },
+        "rationale": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    },
+    "spaceEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes", "rationale", "evidence"],
+      "properties": {
+        "bytes": {"type": "integer", "minimum": 0},
+        "rationale": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence"}
+        }
       }
     },
     "relation": {

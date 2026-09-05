@@ -88,6 +88,11 @@ func TestInspectExplicitAndroidFlutterFVMAndJDKRoots(t *testing.T) {
 	if jdk == nil || filepath.Base(jdk.Path) != "Home" {
 		t.Fatalf("expected JDK JAVA_HOME path, got %#v", jdk)
 	}
+	androidPlatform := findResource(first.Resources, "android", "android_sdk_platform", "35")
+	if androidPlatform == nil || !hasMetadata(androidPlatform.Metadata, "management", "sdkmanager") ||
+		!hasMetadata(androidPlatform.Metadata, "package_path", "platforms;android-35") {
+		t.Fatalf("expected exact sdkmanager package metadata, got %#v", androidPlatform)
+	}
 }
 
 func TestInventoryAndroidSystemImagesAndAVDs(t *testing.T) {

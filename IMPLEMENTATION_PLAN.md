@@ -116,6 +116,7 @@ internal/analyzers        analyse statique Flutter/Android/Gradle
 internal/inventory        inventaire local et tailles estimées
 internal/dockerinventory  inventaire borné du daemon Docker
 internal/correlation      rapprochement exigences/ressources
+internal/classification   catégories, ancienneté et espace potentiel expliqués
 internal/evidence         preuves, confiance et diagnostics
 internal/report           terminal et JSON v1
 internal/platform         adaptateurs filesystem/command/clock
@@ -344,3 +345,33 @@ exigences d'images, 10 correspondances et 24 images déclarées absentes. Le mê
 passage a inventorié 52 images, 19 conteneurs, 2 builders et 48 enregistrements
 BuildKit, sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est
 le Lot 9 — classification explicable.
+
+## 17. Lot 9 terminé — classification explicable
+
+Le moteur applique après corrélation six catégories non exclusives :
+`UTILISEE`, `RECONSTRUCTIBLE`, `ANCIENNE`, `ORPHELINE_PROBABLE`, `SENSIBLE` et
+`INCONNUE`. Chaque catégorie contient une justification et des preuves
+structurées. Le contrat interdit les combinaisons contradictoires et maintient
+les anciens rapports JSON v1 lisibles grâce à des champs additifs optionnels.
+
+La politique `--old-after-days` vaut 180 jours par défaut et est enregistrée
+avec le scan. Une catégorie `ANCIENNE` exige une vraie preuve de dernière
+utilisation ; seule la valeur `LastUsedAt` de `docker buildx du` est reconnue
+dans ce lot. Une date de création ou un `mtime` ne sont jamais substitués à une
+preuve d'usage. Un ancien plugin Buildx peut fournir une durée relative : elle
+est alors évaluée par borne basse conservatrice sans fabriquer de timestamp.
+
+`ORPHELINE_PROBABLE` ne peut apparaître que si une ressource est simultanément
+sans référence dans une couverture complète, reconstructible et ancienne selon
+une preuve fiable, tout en n'étant pas sensible. La taille observée est séparée
+d'un objet `potentially_reclaimable` justifié. Ce dernier est limité aux caches
+BuildKit déclarés récupérables par Docker, non partagés et non mutables ; il
+n'autorise aucune action.
+
+Le gate a été validé par les tests avec détecteur de concurrence, `go vet` et
+deux scans réels du Mac 01. Avec le seuil par défaut de 180 jours, aucune preuve
+n'a dépassé la politique et aucune ressource n'a été artificiellement vieillie.
+Avec un seuil de 1 jour, 41 caches BuildKit observés à 2 ou 3 jours ont reçu
+`ANCIENNE`, tout en conservant `INCONNUE` et sans devenir
+`ORPHELINE_PROBABLE`. Le prochain lot fonctionnel est le Lot 10 — plan de
+nettoyage simulé sans exécution.

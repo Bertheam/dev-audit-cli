@@ -161,12 +161,22 @@ installations `HOST` restent séparés.
 
 ### Lot 9 — Classification explicable
 
-- [ ] Introduire les catégories `UTILISEE`, `RECONSTRUCTIBLE`, `ANCIENNE`,
+- [x] Introduire les catégories `UTILISEE`, `RECONSTRUCTIBLE`, `ANCIENNE`,
   `ORPHELINE_PROBABLE`, `SENSIBLE` et `INCONNUE` sans transformer l'absence de
   preuve en recommandation.
-- [ ] Ajouter une politique d'ancienneté configurable et une preuve de dernière
+- [x] Ajouter une politique d'ancienneté configurable et une preuve de dernière
   utilisation uniquement lorsque la source est fiable.
-- [ ] Distinguer taille occupée et espace potentiellement récupérable.
+- [x] Distinguer taille occupée et espace potentiellement récupérable.
+
+Gate validé sur le Mac 01 : contrat JSON rétrocompatible, classifications et
+estimations accompagnées de preuves, tests avec détecteur de concurrence et
+`go vet` réussis. Le scan réel au seuil par défaut de 180 jours a classé 189
+ressources sans `WARNING` ni `ERROR` et sans inventer de ressource ancienne ou
+orpheline. Un second passage au seuil de 1 jour a classé 41 caches BuildKit
+`ANCIENNE` à partir de leur `LastUsedAt`, tout en les laissant `INCONNUE` et sans
+produire `ORPHELINE_PROBABLE`. Les 31 estimations d'espace potentiel du passage
+par défaut respectent toutes les conditions `Reclaimable=true`, `Shared=false`
+et `Mutable=false`.
 
 ### Lot 10 — Plan de nettoyage simulé
 

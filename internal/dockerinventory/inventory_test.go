@@ -88,7 +88,8 @@ func TestInspectInventoriesAllowlistedDockerResources(t *testing.T) {
 	}
 	cache := findDockerResource(result.Resources, "docker_build_cache")
 	if cache == nil || cache.SizeBytes == nil || *cache.SizeBytes != 829_889_526 ||
-		!hasDockerMetadata(cache.Metadata, "reclaimable_by_docker", "true") {
+		!hasDockerMetadata(cache.Metadata, "reclaimable_by_docker", "true") ||
+		!hasDockerMetadata(cache.Metadata, "last_used_source", "docker_buildx_du") {
 		t.Fatalf("unexpected build cache: %#v", cache)
 	}
 	for _, resource := range result.Resources {

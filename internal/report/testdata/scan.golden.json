@@ -12,7 +12,10 @@
       ".git",
       "build"
     ],
-    "read_only": true
+    "read_only": true,
+    "classification_policy": {
+      "old_after_days": 180
+    }
   },
   "projects": [
     {
@@ -51,6 +54,20 @@
       "path": "/sdk/flutter",
       "size_bytes": 2048,
       "reference_status": "REFERENCED",
+      "classifications": [
+        {
+          "category": "UTILISEE",
+          "rationale": "At least one analyzed project requirement is correlated with this resource.",
+          "evidence": [
+            {
+              "source_type": "correlation",
+              "key": "reference_status",
+              "observed_value": "REFERENCED",
+              "rule_id": "classification.used.reference.v1"
+            }
+          ]
+        }
+      ],
       "metadata": [
         {
           "key": "channel",

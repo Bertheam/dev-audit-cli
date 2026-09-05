@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dev-environment-auditor/internal/analyzers"
+	"dev-environment-auditor/internal/classification"
 	"dev-environment-auditor/internal/correlation"
 	"dev-environment-auditor/internal/discovery"
 	"dev-environment-auditor/internal/dockerinventory"
@@ -37,6 +38,7 @@ type Config struct {
 	GradleUserHomeRoots []string
 	JDKRoots            []string
 	DockerInventory     bool
+	OldAfterDays        int
 	PreScanDiagnostics  []domain.Diagnostic
 	// ProjectDiscoveryHeuristic prevents absence-of-reference conclusions when
 	// project roots came from an automatic search rather than an explicit scope.
@@ -147,12 +149,22 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		RequirementAnalysisComplete: analysisComplete,
 		CompleteInventoryScopes:     completeScopes,
 	})
+	completedAt := scanner.clock.Now().UTC()
+	oldAfterDays := config.OldAfterDays
+	if oldAfterDays <= 0 {
+		oldAfterDays = classification.DefaultOldAfterDays
+	}
+	classificationResult := classification.Apply(correlationResult.Resources, classification.Config{
+		EvaluatedAt:  completedAt,
+		OldAfterDays: oldAfterDays,
+	})
 
 	diagnostics := make([]domain.Diagnostic, 0,
 		len(config.PreScanDiagnostics)+
 			len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
 			len(environmentResult.Diagnostics)+
-			len(inventoryDiagnostics)+len(dockerDiagnostics)+len(correlationResult.Diagnostics),
+			len(inventoryDiagnostics)+len(dockerDiagnostics)+len(correlationResult.Diagnostics)+
+			len(classificationResult.Diagnostics),
 	)
 	diagnostics = append(diagnostics, config.PreScanDiagnostics...)
 	diagnostics = append(diagnostics, discoveryResult.Diagnostics...)
@@ -161,6 +173,7 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	diagnostics = append(diagnostics, inventoryDiagnostics...)
 	diagnostics = append(diagnostics, dockerDiagnostics...)
 	diagnostics = append(diagnostics, correlationResult.Diagnostics...)
+	diagnostics = append(diagnostics, classificationResult.Diagnostics...)
 	sortDiagnostics(diagnostics)
 
 	roots := cloneStrings(discoveryResult.Roots)
@@ -168,7 +181,6 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		roots = explicitRoots(config.ProjectRoots)
 	}
 	exclusions := normalizedStrings(config.Exclusions)
-	completedAt := scanner.clock.Now().UTC()
 	relations := append([]domain.Relation{}, correlationResult.Relations...)
 	relations = append(relations, environmentResult.Relations...)
 	return domain.ScanDocument{
@@ -180,9 +192,12 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 			Roots:       roots,
 			Exclusions:  exclusions,
 			ReadOnly:    true,
+			ClassificationPolicy: &domain.ClassificationPolicy{
+				OldAfterDays: oldAfterDays,
+			},
 		},
 		Projects:           correlationResult.Projects,
-		InstalledResources: correlationResult.Resources,
+		InstalledResources: classificationResult.Resources,
 		Relations:          relations,
 		Diagnostics:        diagnostics,
 	}

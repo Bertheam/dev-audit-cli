@@ -349,6 +349,12 @@ func (inventory *Inventory) addAndroidPackage(
 		metadataEntry("inventory_source", "android_sdk_root"),
 		metadataEntry("sdk_root", sdkRoot),
 	}
+	if packageIdentifier, ok := androidPackageIdentifier(sdkRoot, packagePath); ok {
+		metadata = append(metadata,
+			metadataEntry("package_path", packageIdentifier),
+			metadataEntry("management", "sdkmanager"),
+		)
+	}
 	var versionPointer *string
 	if version != "" {
 		versionPointer = &version
@@ -366,6 +372,19 @@ func (inventory *Inventory) addAndroidPackage(
 		builder,
 		result,
 	)
+}
+
+func androidPackageIdentifier(sdkRoot, packagePath string) (string, bool) {
+	relative, err := filepath.Rel(sdkRoot, packagePath)
+	if err != nil || relative == "." || relative == "ndk-bundle" ||
+		relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	return strings.Join(parts, ";"), true
 }
 
 func parseProperties(content []byte) map[string]string {

@@ -106,6 +106,27 @@ daemon dans l'environnement `DOCKER_DAEMON`. Cette relation peut pointer vers
 une ressource `docker_image`. Elle est différente de `DOCKER`, qui décrit une
 toolchain déclarée dans un fichier sans affirmer que l'image existe localement.
 
+Le Lot 9 ajoute enfin une classification multiple et expliquée des ressources.
+`UTILISEE`, `RECONSTRUCTIBLE`, `ANCIENNE`, `ORPHELINE_PROBABLE`, `SENSIBLE` et
+`INCONNUE` sont des observations accompagnées d'une justification et de leurs
+preuves. Une ressource peut cumuler des catégories compatibles, par exemple
+`RECONSTRUCTIBLE,ANCIENNE,INCONNUE`. `ORPHELINE_PROBABLE` exige simultanément
+une absence de référence dans une couverture complète, une reconstruction
+démontrable et une dernière utilisation fiable plus ancienne que la politique ;
+`NO_REFERENCE_FOUND` seul ne suffit jamais.
+
+Le seuil d'ancienneté vaut 180 jours par défaut. À ce stade, seule la date
+`LastUsedAt` fournie par `docker buildx du` est acceptée comme preuve de dernière
+utilisation ; les dates de création et les `mtime` de dossiers ne le sont pas.
+Les plugins récents la fournissent en RFC 3339 ; les plugins plus anciens
+peuvent fournir une durée relative, conservée telle quelle et évaluée avec une
+borne basse prudente sans inventer de date exacte.
+
+Le rapport sépare `observed_size` de `potentially_reclaimable`. Cette dernière
+est publiée uniquement pour un enregistrement BuildKit marqué récupérable par
+Docker, non partagé et non mutable. Elle reste une estimation par ressource,
+jamais une recommandation ou un total garanti.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
@@ -276,6 +297,16 @@ diagnostic `INFO`. La CLI n'utilise ni `prune`, ni `rm`, ni `pull`, ni `run`, ni
 commande de build. Elle ne collecte pas les commandes, labels, variables,
 montages ou contenus des conteneurs.
 
+La politique d'ancienneté peut être ajustée sans modifier les autres règles :
+
+```bash
+dev-audit scan --old-after-days 90
+```
+
+La valeur choisie est enregistrée dans `scan.classification_policy` du rapport
+JSON. Réduire le seuil peut produire davantage de catégories `ANCIENNE`, mais
+ne transforme toujours aucune catégorie en ordre de suppression.
+
 Une exigence peut avoir simultanément deux lectures dans le rapport :
 
 ```text
@@ -334,4 +365,6 @@ Codes de sortie :
 
 Une absence de référence signifie uniquement qu'aucune référence n'a été trouvée
 dans le périmètre effectivement analysé. Elle ne signifie jamais qu'une ressource
-est inutilisée ou sûre à supprimer.
+est inutilisée ou sûre à supprimer. Les classifications et l'espace
+potentiellement récupérable restent des observations à examiner, pas des
+recommandations de nettoyage.

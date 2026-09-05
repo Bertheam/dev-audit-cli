@@ -19,4 +19,7 @@
 | Sortie Docker volumineuse ou lente | Scan bloqué ou mémoire excessive | Timeout par commande, timeout global, sortie bornée et budget de ressources. |
 | Métadonnées Docker sensibles | Fuite de commandes, variables ou labels | Demander uniquement ID, référence, état, tailles et dates ; ne jamais collecter commandes, labels, env ou montages. |
 | AVD volumineux mais encore utile | Perte de données d'émulateur ou de scénario de test | Marquer l'AVD sensible et `UNKNOWN` ; ne jamais déduire une action de sa taille seule. |
+| Ancienneté déduite d'un `mtime` ou d'une création | Faux classement d'une ressource encore utile | Accepter uniquement une dernière utilisation allowlistée et enregistrer le seuil appliqué. |
+| `NO_REFERENCE_FOUND` présenté comme inutilisé | Suppression d'une ressource utile hors couverture | Exiger aussi reconstruction prouvée et ancienneté fiable pour `ORPHELINE_PROBABLE` ; sinon conserver `INCONNUE`. |
+| Tailles Docker partagées additionnées | Surestimation de l'espace récupérable | Séparer taille observée et estimation potentielle ; exclure cache partagé ou mutable et ne pas publier de total garanti. |
 | Chemin de module Go provisoire | Renommage d'import avant publication | Fixer l'URL distante avant toute publication ou import public. |

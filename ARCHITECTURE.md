@@ -15,7 +15,7 @@ Arguments CLI
   -> environment analyzers (Dockerfile et Compose statiques)
   -> inventory adapters (hôte et daemon Docker)
   -> correlation
-  -> evidence/confidence
+  -> classification explicable
   -> terminal ou JSON v1
 ```
 
@@ -67,10 +67,11 @@ source sont exposés par diagnostics.
 
 ### `internal/application`
 
-Orchestre Discovery, analyse statique, inventaires séparés par famille et
-corrélation. La couverture des projets et analyseurs est complète uniquement en
-l'absence de diagnostic `WARNING` ou `ERROR`. Chaque famille d'inventaire ne
-déclare ses types complets que si son propre passage respecte la même règle.
+Orchestre Discovery, analyse statique, inventaires séparés par famille,
+corrélation et classification. La couverture des projets et analyseurs est
+complète uniquement en l'absence de diagnostic `WARNING` ou `ERROR`. Chaque
+famille d'inventaire ne déclare ses types complets que si son propre passage
+respecte la même règle.
 Une erreur partielle conserve les résultats des autres étapes.
 
 Une racine de projets auto-détectée rend volontairement incomplète la couverture
@@ -84,10 +85,12 @@ produit `DOCKER_DAEMON`.
 ### `internal/domain`
 
 Contient les types `Scan`, `Project`, `Requirement`, `InstalledResource`,
-`Relation`, `Evidence` et `Diagnostic`, ainsi que leurs invariants. Une relation
+`ResourceClassification`, `SpaceEstimate`, `Relation`, `Evidence` et
+`Diagnostic`, ainsi que leurs invariants. Une relation
 porte l'environnement `HOST`, `DOCKER` ou `DOCKER_DAEMON`. Pour compatibilité
-avec les premiers
-rapports JSON v1, l'absence du champ `environment` se lit comme `HOST`.
+avec les premiers rapports JSON v1, l'absence du champ `environment` se lit
+comme `HOST`. Les champs additifs de classification restent optionnels à la
+lecture pour conserver la compatibilité avec les rapports v1 antérieurs.
 
 ### `internal/discovery`
 
@@ -210,6 +213,27 @@ Une relation `DOCKER_DAEMON:MISSING` exige un inventaire d'images complet ; les
 images locales non reliées restent `UNKNOWN` si la découverte de projets est
 heuristique.
 
+### `internal/classification`
+
+Applique après corrélation des catégories multiples, déterministes et
+accompagnées de preuves. `UTILISEE` exige une relation positive ou un état de
+conteneur actif observé. `RECONSTRUCTIBLE` exige un chemin de reconstruction
+identifiable : paquet `sdkmanager`, cache FVM versionné, cache Gradle ou cache
+BuildKit. `SENSIBLE` dérive uniquement d'une métadonnée de sensibilité explicite.
+
+`ANCIENNE` compare une preuve fiable de dernière utilisation au seuil
+`--old-after-days`, enregistré dans le rapport. Le moteur n'accepte actuellement
+que `LastUsedAt` issu de `docker buildx du`; il ignore les dates de création et
+les `mtime`. Les durées relatives d'anciens plugins Buildx utilisent une borne
+basse conservatrice plutôt qu'une date reconstruite. `ORPHELINE_PROBABLE` exige
+à la fois `NO_REFERENCE_FOUND`, `RECONSTRUCTIBLE` et `ANCIENNE`, et exclut toute
+ressource sensible. En l'absence de preuve suffisante, `INCONNUE` reste explicite.
+
+Un `SpaceEstimate` n'est produit que pour un cache BuildKit dont Docker affirme
+qu'il est récupérable, non partagé et non mutable. Sa justification et ses
+preuves restent attachées à la ressource. Les tailles observées et les espaces
+potentiels ne sont pas additionnés comme s'ils étaient des octets uniques.
+
 ### `internal/evidence`
 
 Centralise les preuves, les règles de confiance, la suppression des valeurs
@@ -224,7 +248,10 @@ Le schéma JSON 2020-12 est embarqué dans le binaire et compilé localement ave
 les assertions de format activées. Le terminal échappe les caractères de
 contrôle et rappelle systématiquement que `NO_REFERENCE_FOUND` n'autorise pas
 une suppression. Les rapports d'entrée de `explain` sont limités à 64 Mio,
-refusent les champs inconnus et les valeurs JSON supplémentaires.
+refusent les champs inconnus et les valeurs JSON supplémentaires. Le rapport
+terminal affiche séparément `observed_size` et `potentially_reclaimable`, puis
+`explain` expose la justification et les preuves de chaque classification ou
+estimation.
 
 ### `internal/platform`
 

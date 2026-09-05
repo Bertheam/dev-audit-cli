@@ -42,6 +42,20 @@ func Normalize(document domain.ScanDocument) (domain.ScanDocument, error) {
 	for resourceIndex := range result.InstalledResources {
 		resource := &result.InstalledResources[resourceIndex]
 		sort.Strings(resource.Warnings)
+		for classificationIndex := range resource.Classifications {
+			sortEvidence(resource.Classifications[classificationIndex].Evidence)
+		}
+		sort.SliceStable(resource.Classifications, func(left, right int) bool {
+			leftCategory := resource.Classifications[left].Category
+			rightCategory := resource.Classifications[right].Category
+			if categoryRank(leftCategory) != categoryRank(rightCategory) {
+				return categoryRank(leftCategory) < categoryRank(rightCategory)
+			}
+			return resource.Classifications[left].Rationale < resource.Classifications[right].Rationale
+		})
+		if resource.PotentiallyReclaimable != nil {
+			sortEvidence(resource.PotentiallyReclaimable.Evidence)
+		}
 		sort.SliceStable(resource.Metadata, func(left, right int) bool {
 			return resource.Metadata[left].Key+"\x00"+resource.Metadata[left].Value <
 				resource.Metadata[right].Key+"\x00"+resource.Metadata[right].Value
@@ -63,6 +77,22 @@ func Normalize(document domain.ScanDocument) (domain.ScanDocument, error) {
 		return diagnosticKey(result.Diagnostics[left]) < diagnosticKey(result.Diagnostics[right])
 	})
 	return result, nil
+}
+
+func categoryRank(category domain.ResourceCategory) int {
+	for index, candidate := range []domain.ResourceCategory{
+		domain.CategoryUsed,
+		domain.CategoryReconstructible,
+		domain.CategoryOld,
+		domain.CategoryProbableOrphan,
+		domain.CategorySensitive,
+		domain.CategoryUnknown,
+	} {
+		if category == candidate {
+			return index
+		}
+	}
+	return 100
 }
 
 func requirementKey(requirement domain.Requirement) string {

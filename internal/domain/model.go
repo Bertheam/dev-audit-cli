@@ -33,6 +33,17 @@ const (
 	ReferenceUnknown ReferenceStatus = "UNKNOWN"
 )
 
+type ResourceCategory string
+
+const (
+	CategoryUsed            ResourceCategory = "UTILISEE"
+	CategoryReconstructible ResourceCategory = "RECONSTRUCTIBLE"
+	CategoryOld             ResourceCategory = "ANCIENNE"
+	CategoryProbableOrphan  ResourceCategory = "ORPHELINE_PROBABLE"
+	CategorySensitive       ResourceCategory = "SENSIBLE"
+	CategoryUnknown         ResourceCategory = "INCONNUE"
+)
+
 type MatchStatus string
 
 const (
@@ -92,16 +103,30 @@ type MetadataEntry struct {
 	Value string `json:"value"`
 }
 
+type ResourceClassification struct {
+	Category  ResourceCategory `json:"category"`
+	Rationale string           `json:"rationale"`
+	Evidence  []Evidence       `json:"evidence"`
+}
+
+type SpaceEstimate struct {
+	Bytes     int64      `json:"bytes"`
+	Rationale string     `json:"rationale"`
+	Evidence  []Evidence `json:"evidence"`
+}
+
 type InstalledResource struct {
-	ID              string          `json:"id"`
-	Ecosystem       string          `json:"ecosystem"`
-	Component       string          `json:"component"`
-	Version         *string         `json:"version,omitempty"`
-	Path            string          `json:"path"`
-	SizeBytes       *int64          `json:"size_bytes,omitempty"`
-	ReferenceStatus ReferenceStatus `json:"reference_status"`
-	Metadata        []MetadataEntry `json:"metadata"`
-	Warnings        []string        `json:"warnings"`
+	ID                     string                   `json:"id"`
+	Ecosystem              string                   `json:"ecosystem"`
+	Component              string                   `json:"component"`
+	Version                *string                  `json:"version,omitempty"`
+	Path                   string                   `json:"path"`
+	SizeBytes              *int64                   `json:"size_bytes,omitempty"`
+	PotentiallyReclaimable *SpaceEstimate           `json:"potentially_reclaimable,omitempty"`
+	ReferenceStatus        ReferenceStatus          `json:"reference_status"`
+	Classifications        []ResourceClassification `json:"classifications,omitempty"`
+	Metadata               []MetadataEntry          `json:"metadata"`
+	Warnings               []string                 `json:"warnings"`
 }
 
 type Relation struct {
@@ -126,11 +151,16 @@ type Diagnostic struct {
 }
 
 type ScanMetadata struct {
-	StartedAt   string   `json:"started_at"`
-	CompletedAt string   `json:"completed_at"`
-	Roots       []string `json:"roots"`
-	Exclusions  []string `json:"exclusions"`
-	ReadOnly    bool     `json:"read_only"`
+	StartedAt            string                `json:"started_at"`
+	CompletedAt          string                `json:"completed_at"`
+	Roots                []string              `json:"roots"`
+	Exclusions           []string              `json:"exclusions"`
+	ReadOnly             bool                  `json:"read_only"`
+	ClassificationPolicy *ClassificationPolicy `json:"classification_policy,omitempty"`
+}
+
+type ClassificationPolicy struct {
+	OldAfterDays int `json:"old_after_days"`
 }
 
 type ScanDocument struct {
@@ -159,6 +189,74 @@ func (document ScanDocument) Validate() error {
 	if document.Scan.StartedAt == "" || document.Scan.CompletedAt == "" {
 		return errors.New("scan timestamps are required")
 	}
+	if document.Scan.ClassificationPolicy != nil && document.Scan.ClassificationPolicy.OldAfterDays <= 0 {
+		return errors.New("classification_policy.old_after_days must be greater than zero")
+	}
+	for resourceIndex, resource := range document.InstalledResources {
+		if resource.PotentiallyReclaimable != nil {
+			if resource.PotentiallyReclaimable.Bytes < 0 {
+				return fmt.Errorf("installed_resources[%d].potentially_reclaimable.bytes must not be negative", resourceIndex)
+			}
+			if resource.PotentiallyReclaimable.Rationale == "" {
+				return fmt.Errorf("installed_resources[%d].potentially_reclaimable.rationale is required", resourceIndex)
+			}
+			if len(resource.PotentiallyReclaimable.Evidence) == 0 {
+				return fmt.Errorf("installed_resources[%d].potentially_reclaimable.evidence is required", resourceIndex)
+			}
+			if resource.SizeBytes != nil && resource.PotentiallyReclaimable.Bytes > *resource.SizeBytes {
+				return fmt.Errorf("installed_resources[%d].potentially_reclaimable.bytes exceeds size_bytes", resourceIndex)
+			}
+		}
+		seenCategories := make(map[ResourceCategory]struct{}, len(resource.Classifications))
+		for classificationIndex, classification := range resource.Classifications {
+			if !validResourceCategory(classification.Category) {
+				return fmt.Errorf("installed_resources[%d].classifications[%d].category is invalid", resourceIndex, classificationIndex)
+			}
+			if classification.Rationale == "" {
+				return fmt.Errorf("installed_resources[%d].classifications[%d].rationale is required", resourceIndex, classificationIndex)
+			}
+			if len(classification.Evidence) == 0 {
+				return fmt.Errorf("installed_resources[%d].classifications[%d].evidence is required", resourceIndex, classificationIndex)
+			}
+			if _, exists := seenCategories[classification.Category]; exists {
+				return fmt.Errorf("installed_resources[%d].classifications contains duplicate category %q", resourceIndex, classification.Category)
+			}
+			seenCategories[classification.Category] = struct{}{}
+		}
+		if _, used := seenCategories[CategoryUsed]; used {
+			if _, unknown := seenCategories[CategoryUnknown]; unknown {
+				return fmt.Errorf("installed_resources[%d] cannot be both UTILISEE and INCONNUE", resourceIndex)
+			}
+		}
+		if _, old := seenCategories[CategoryOld]; old && document.Scan.ClassificationPolicy == nil {
+			return fmt.Errorf("installed_resources[%d].ANCIENNE requires classification_policy", resourceIndex)
+		}
+		if _, orphan := seenCategories[CategoryProbableOrphan]; orphan {
+			if resource.ReferenceStatus != NoReferenceFound {
+				return fmt.Errorf("installed_resources[%d].ORPHELINE_PROBABLE requires NO_REFERENCE_FOUND", resourceIndex)
+			}
+			if _, reconstructible := seenCategories[CategoryReconstructible]; !reconstructible {
+				return fmt.Errorf("installed_resources[%d].ORPHELINE_PROBABLE requires RECONSTRUCTIBLE", resourceIndex)
+			}
+			if _, old := seenCategories[CategoryOld]; !old {
+				return fmt.Errorf("installed_resources[%d].ORPHELINE_PROBABLE requires ANCIENNE", resourceIndex)
+			}
+			if _, sensitive := seenCategories[CategorySensitive]; sensitive {
+				return fmt.Errorf("installed_resources[%d] cannot be both ORPHELINE_PROBABLE and SENSIBLE", resourceIndex)
+			}
+			if _, used := seenCategories[CategoryUsed]; used {
+				return fmt.Errorf("installed_resources[%d] cannot be both ORPHELINE_PROBABLE and UTILISEE", resourceIndex)
+			}
+			if _, unknown := seenCategories[CategoryUnknown]; unknown {
+				return fmt.Errorf("installed_resources[%d] cannot be both ORPHELINE_PROBABLE and INCONNUE", resourceIndex)
+			}
+		}
+		if resource.PotentiallyReclaimable != nil {
+			if _, sensitive := seenCategories[CategorySensitive]; sensitive {
+				return fmt.Errorf("installed_resources[%d].SENSIBLE cannot expose potentially reclaimable space", resourceIndex)
+			}
+		}
+	}
 	for index, relation := range document.Relations {
 		environment := relation.Environment
 		if environment == "" {
@@ -172,4 +270,13 @@ func (document ScanDocument) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validResourceCategory(category ResourceCategory) bool {
+	switch category {
+	case CategoryUsed, CategoryReconstructible, CategoryOld, CategoryProbableOrphan, CategorySensitive, CategoryUnknown:
+		return true
+	default:
+		return false
+	}
 }

@@ -97,3 +97,91 @@ func TestDockerDaemonRelationMayReferenceDockerResource(t *testing.T) {
 		t.Fatalf("Docker daemon relation should accept a local Docker resource: %v", err)
 	}
 }
+
+func TestClassificationContractRejectsUnsafeOrUnexplainedStates(t *testing.T) {
+	evidence := []Evidence{{SourceType: "test", RuleID: "test.rule"}}
+	tests := []struct {
+		name           string
+		resource       InstalledResource
+		oldAfterDays   int
+		wantValidation bool
+	}{
+		{
+			name: "valid probable orphan",
+			resource: InstalledResource{
+				ID: "resource", Ecosystem: "docker", Component: "docker_build_cache", Path: "docker://cache/id",
+				ReferenceStatus: NoReferenceFound, Metadata: []MetadataEntry{}, Warnings: []string{},
+				Classifications: []ResourceClassification{
+					{Category: CategoryReconstructible, Rationale: "fixture", Evidence: evidence},
+					{Category: CategoryOld, Rationale: "fixture", Evidence: evidence},
+					{Category: CategoryProbableOrphan, Rationale: "fixture", Evidence: evidence},
+				},
+			},
+			oldAfterDays:   180,
+			wantValidation: true,
+		},
+		{
+			name: "used and unknown",
+			resource: InstalledResource{
+				ID: "resource", Ecosystem: "java", Component: "jdk", Path: "/jdk",
+				ReferenceStatus: Referenced, Metadata: []MetadataEntry{}, Warnings: []string{},
+				Classifications: []ResourceClassification{
+					{Category: CategoryUsed, Rationale: "fixture", Evidence: evidence},
+					{Category: CategoryUnknown, Rationale: "fixture", Evidence: evidence},
+				},
+			},
+			oldAfterDays: 180,
+		},
+		{
+			name: "orphan without age",
+			resource: InstalledResource{
+				ID: "resource", Ecosystem: "java", Component: "jdk", Path: "/jdk",
+				ReferenceStatus: NoReferenceFound, Metadata: []MetadataEntry{}, Warnings: []string{},
+				Classifications: []ResourceClassification{
+					{Category: CategoryReconstructible, Rationale: "fixture", Evidence: evidence},
+					{Category: CategoryProbableOrphan, Rationale: "fixture", Evidence: evidence},
+				},
+			},
+			oldAfterDays: 180,
+		},
+		{
+			name: "classification without evidence",
+			resource: InstalledResource{
+				ID: "resource", Ecosystem: "java", Component: "jdk", Path: "/jdk",
+				ReferenceStatus: ReferenceUnknown, Metadata: []MetadataEntry{}, Warnings: []string{},
+				Classifications: []ResourceClassification{{Category: CategoryUnknown, Rationale: "fixture"}},
+			},
+			oldAfterDays: 180,
+		},
+		{
+			name: "invalid policy",
+			resource: InstalledResource{
+				ID: "resource", Ecosystem: "java", Component: "jdk", Path: "/jdk",
+				ReferenceStatus: ReferenceUnknown, Metadata: []MetadataEntry{}, Warnings: []string{},
+			},
+			oldAfterDays: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := ScanDocument{
+				SchemaVersion: SchemaVersion,
+				ToolVersion:   "test",
+				Scan: ScanMetadata{
+					StartedAt: "2026-09-05T12:00:00Z", CompletedAt: "2026-09-05T12:00:01Z",
+					Roots: []string{"/work"}, Exclusions: []string{}, ReadOnly: true,
+					ClassificationPolicy: &ClassificationPolicy{OldAfterDays: test.oldAfterDays},
+				},
+				InstalledResources: []InstalledResource{test.resource},
+			}
+			err := document.Validate()
+			if test.wantValidation && err != nil {
+				t.Fatalf("expected valid classification contract: %v", err)
+			}
+			if !test.wantValidation && err == nil {
+				t.Fatal("expected classification contract validation error")
+			}
+		})
+	}
+}

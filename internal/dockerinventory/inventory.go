@@ -504,6 +504,9 @@ func parseBuildCache(content []byte, limit int) ([]domain.InstalledResource, []d
 				metadata = append(metadata, entry(key, value))
 			}
 		}
+		if row.LastUsedAt != "" && safeReportValue(row.LastUsedAt) {
+			metadata = append(metadata, entry("last_used_source", "docker_buildx_du"))
+		}
 		warnings := []string{"Docker reclaimable status is an observation and does not authorize cleanup"}
 		if row.Shared {
 			warnings = append(warnings, "cache storage is shared with another Docker resource")

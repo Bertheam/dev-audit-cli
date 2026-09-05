@@ -60,5 +60,13 @@
 - Le signal BuildKit `Reclaimable` et la taille virtuelle d'une image sont des
   observations Docker ; ils ne constituent ni une taille uniquement
   récupérable ni une autorisation de nettoyage.
+- `ANCIENNE` utilise uniquement une preuve de dernière utilisation associée à
+  une source allowlistée. Les dates de création et `mtime` ne sont pas des
+  preuves d'usage ; le seuil choisi est conservé dans le rapport.
+- `ORPHELINE_PROBABLE` exige `NO_REFERENCE_FOUND`, `RECONSTRUCTIBLE` et
+  `ANCIENNE`, et reste interdit pour une ressource sensible. L'absence de
+  référence seule reste `INCONNUE`.
+- `potentially_reclaimable` est une estimation locale justifiée et distincte de
+  `size_bytes`. Elle n'est ni un total garanti ni une autorisation d'action.
 - « Go » et « Rust » dans les exclusions du document désignent les écosystèmes à
   auditer, pas nécessairement le langage d'implémentation.

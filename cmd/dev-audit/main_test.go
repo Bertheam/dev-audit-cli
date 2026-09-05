@@ -69,6 +69,7 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 		"--jdk-root", "/jdks",
 		"--format", "json",
 		"--timeout", "2s",
+		"--old-after-days", "90",
 	}
 
 	if exitCode := runWithDependencies(arguments, &stdout, &stderr, dependencies); exitCode != exitSuccess {
@@ -86,6 +87,9 @@ func TestScanJSONPassesExplicitConfiguration(t *testing.T) {
 	}
 	if !captured.DockerInventory {
 		t.Fatal("Docker inventory should be enabled by default")
+	}
+	if captured.OldAfterDays != 90 {
+		t.Fatalf("age policy not forwarded: %#v", captured)
 	}
 	if _, err := report.DecodeJSON(stdout.Bytes()); err != nil {
 		t.Fatalf("stdout is not schema-valid JSON: %v\n%s", err, stdout.String())
@@ -192,6 +196,7 @@ func TestScanExitCodes(t *testing.T) {
 		{name: "missing root", arguments: []string{"scan"}, document: validDocument(), want: exitUsage},
 		{name: "bad format", arguments: []string{"scan", "--root", "/work", "--format", "yaml"}, document: validDocument(), want: exitUsage},
 		{name: "bad timeout", arguments: []string{"scan", "--root", "/work", "--timeout", "0s"}, document: validDocument(), want: exitUsage},
+		{name: "bad age policy", arguments: []string{"scan", "--root", "/work", "--old-after-days", "0"}, document: validDocument(), want: exitUsage},
 		{name: "partial diagnostics", arguments: []string{"scan", "--root", "/work"}, document: documentWithError(), want: exitPartial},
 		{name: "invalid document", arguments: []string{"scan", "--root", "/work", "--format", "json"}, document: domain.ScanDocument{}, want: exitOperationalError},
 		{name: "output failure", arguments: []string{"scan", "--root", "/work", "--output", "/report"}, document: validDocument(), writerErr: errors.New("disk full"), want: exitOperationalError},

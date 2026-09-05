@@ -134,11 +134,23 @@ func explainResource(document domain.ScanDocument, resource domain.InstalledReso
 	fmt.Fprintf(&output, "  component: %s/%s\n", terminalValue(resource.Ecosystem), terminalValue(resource.Component))
 	fmt.Fprintf(&output, "  version: %s\n", optionalTerminalValue(resource.Version))
 	fmt.Fprintf(&output, "  path: %s\n", terminalValue(resource.Path))
-	fmt.Fprintf(&output, "  logical size: %s\n", formatSize(resource.SizeBytes))
-	fmt.Fprintf(&output, "  reference status: %s\n", resource.ReferenceStatus)
-	if resource.ReferenceStatus == domain.NoReferenceFound {
-		fmt.Fprintf(&output, "  safety: %s\n", safetyNotice)
+	fmt.Fprintf(&output, "  observed size: %s\n", formatSize(resource.SizeBytes))
+	fmt.Fprintf(&output, "  potentially reclaimable: %s\n", formatSpaceEstimate(resource.PotentiallyReclaimable))
+	if resource.PotentiallyReclaimable != nil {
+		fmt.Fprintf(&output, "  potentially reclaimable rationale: %s\n",
+			terminalValue(resource.PotentiallyReclaimable.Rationale))
+		appendEvidence(&output, resource.PotentiallyReclaimable.Evidence, "    ")
 	}
+	fmt.Fprintf(&output, "  reference status: %s\n", resource.ReferenceStatus)
+	fmt.Fprintf(&output, "  classifications (%d):\n", len(resource.Classifications))
+	if len(resource.Classifications) == 0 {
+		output.WriteString("    (not recorded in this report)\n")
+	}
+	for _, classification := range resource.Classifications {
+		fmt.Fprintf(&output, "    - %s: %s\n", classification.Category, terminalValue(classification.Rationale))
+		appendEvidence(&output, classification.Evidence, "      ")
+	}
+	fmt.Fprintf(&output, "  safety: %s\n", safetyNotice)
 	output.WriteString("  metadata:\n")
 	if len(resource.Metadata) == 0 {
 		output.WriteString("    (none)\n")
@@ -210,6 +222,9 @@ func appendEvidence(output *strings.Builder, evidence []domain.Evidence, indent 
 		}
 		if item.ObservedValue != nil {
 			fmt.Fprintf(output, " observed=%s", terminalValue(*item.ObservedValue))
+		}
+		if len(item.Command) > 0 {
+			fmt.Fprintf(output, " command=%s", terminalValue(strings.Join(item.Command, " ")))
 		}
 		output.WriteByte('\n')
 	}

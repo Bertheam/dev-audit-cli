@@ -116,6 +116,47 @@ func TestExplainProjectRequirementAndResource(t *testing.T) {
 	}
 }
 
+func TestRenderAndExplainPotentiallyReclaimableSpace(t *testing.T) {
+	document := sampleDocument()
+	document.InstalledResources[0].PotentiallyReclaimable = &domain.SpaceEstimate{
+		Bytes:     1024,
+		Rationale: "fixture conservative estimate",
+		Evidence: []domain.Evidence{{
+			SourceType: "test",
+			RuleID:     "classification.space.fixture.v1",
+		}},
+	}
+	if _, err := RenderJSON(document); err != nil {
+		t.Fatalf("space estimate must satisfy the JSON schema: %v", err)
+	}
+	terminal, err := RenderTerminal(document)
+	if err != nil || !bytes.Contains(terminal, []byte("potentially_reclaimable=1.0 KiB")) {
+		t.Fatalf("terminal did not separate potential space: err=%v\n%s", err, terminal)
+	}
+	explanation, found, err := Explain(document, "resource-one")
+	if err != nil || !found || !bytes.Contains(explanation, []byte("fixture conservative estimate")) ||
+		!bytes.Contains(explanation, []byte("classification.space.fixture.v1")) {
+		t.Fatalf("explain did not expose estimate rationale and evidence: found=%v err=%v\n%s", found, err, explanation)
+	}
+}
+
+func TestLegacyResourceWithoutClassificationsRemainsReadable(t *testing.T) {
+	document := sampleDocument()
+	document.Scan.ClassificationPolicy = nil
+	document.InstalledResources[0].Classifications = nil
+	content, err := RenderJSON(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeJSON(content)
+	if err != nil {
+		t.Fatalf("legacy v1 resource should remain readable: %v", err)
+	}
+	if len(decoded.InstalledResources[0].Classifications) != 0 {
+		t.Fatalf("legacy resource classifications changed: %#v", decoded.InstalledResources[0])
+	}
+}
+
 func TestRenderAndExplainDockerDaemonRelation(t *testing.T) {
 	document := sampleDocument()
 	constraint := "postgres:16"
@@ -203,6 +244,9 @@ func sampleDocument() domain.ScanDocument {
 			Roots:       []string{"/work/z", "/work/a"},
 			Exclusions:  []string{"build", ".git"},
 			ReadOnly:    true,
+			ClassificationPolicy: &domain.ClassificationPolicy{
+				OldAfterDays: 180,
+			},
 		},
 		Projects: []domain.Project{
 			{
@@ -232,6 +276,16 @@ func sampleDocument() domain.ScanDocument {
 				Path:            "/sdk/flutter",
 				SizeBytes:       &size,
 				ReferenceStatus: domain.Referenced,
+				Classifications: []domain.ResourceClassification{{
+					Category:  domain.CategoryUsed,
+					Rationale: "At least one analyzed project requirement is correlated with this resource.",
+					Evidence: []domain.Evidence{{
+						SourceType:    "correlation",
+						Key:           stringPointer("reference_status"),
+						ObservedValue: stringPointer("REFERENCED"),
+						RuleID:        "classification.used.reference.v1",
+					}},
+				}},
 				Metadata: []domain.MetadataEntry{
 					{Key: "channel", Value: "stable"},
 					{Key: "dart_sdk_version", Value: "3.9.0"},
@@ -270,6 +324,10 @@ func sampleDocument() domain.ScanDocument {
 			},
 		},
 	}
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func assertGolden(t *testing.T, path string, actual []byte) {

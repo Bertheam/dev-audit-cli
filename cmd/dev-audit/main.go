@@ -13,6 +13,7 @@ import (
 
 	"dev-environment-auditor/internal/application"
 	"dev-environment-auditor/internal/autodetect"
+	"dev-environment-auditor/internal/classification"
 	"dev-environment-auditor/internal/domain"
 	"dev-environment-auditor/internal/report"
 )
@@ -123,6 +124,7 @@ func runScan(
 	var autoDetect bool
 	var deepSearch bool
 	var dockerInventory bool
+	var oldAfterDays int
 	flags.Var(&projectRoots, "root", "project search root; repeatable; auto-detected when omitted")
 	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
 	flags.Var(&androidRoots, "android-sdk-root", "Android SDK inventory root; repeatable")
@@ -137,6 +139,7 @@ func runScan(
 	flags.BoolVar(&autoDetect, "auto-detect", true, "detect omitted project and inventory roots without executing tools")
 	flags.BoolVar(&deepSearch, "deep-search", true, "run a bounded search of conventional development locations")
 	flags.BoolVar(&dockerInventory, "docker-inventory", true, "observe local Docker images, containers, builders and BuildKit cache when available")
+	flags.IntVar(&oldAfterDays, "old-after-days", classification.DefaultOldAfterDays, "classify trusted last-use observations as old after this many days")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -149,6 +152,10 @@ func runScan(
 	}
 	if timeout <= 0 {
 		fmt.Fprintln(stderr, "--timeout must be greater than zero")
+		return exitUsage
+	}
+	if oldAfterDays <= 0 {
+		fmt.Fprintln(stderr, "--old-after-days must be greater than zero")
 		return exitUsage
 	}
 	format = strings.ToLower(strings.TrimSpace(format))
@@ -219,6 +226,7 @@ func runScan(
 		GradleUserHomeRoots:        []string(gradleRoots),
 		JDKRoots:                   []string(jdkRoots),
 		DockerInventory:            dockerInventory,
+		OldAfterDays:               oldAfterDays,
 		PreScanDiagnostics:         preScanDiagnostics,
 		ProjectDiscoveryHeuristic:  projectDiscoveryHeuristic,
 		HeuristicInventoryFamilies: heuristicInventoryFamilies,

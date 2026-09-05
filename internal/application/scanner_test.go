@@ -278,6 +278,11 @@ func TestScannerCorrelatesDeclaredImageWithDockerDaemonInventory(t *testing.T) {
 		document.InstalledResources[0].ReferenceStatus != domain.Referenced {
 		t.Fatalf("Docker daemon resource was not correlated: %#v", document.InstalledResources)
 	}
+	if document.Scan.ClassificationPolicy == nil ||
+		document.Scan.ClassificationPolicy.OldAfterDays != 180 ||
+		!resourceHasCategory(document.InstalledResources[0], domain.CategoryUsed) {
+		t.Fatalf("classification was not applied with the default policy: %#v", document)
+	}
 	matched := false
 	for _, relation := range document.Relations {
 		if relation.Environment == domain.EnvironmentDockerDaemon && relation.MatchStatus == domain.Matched &&
@@ -343,6 +348,15 @@ func hasDiagnostic(diagnostics []domain.Diagnostic, code string) bool {
 func hasSeverity(diagnostics []domain.Diagnostic, severity domain.DiagnosticSeverity) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Severity == severity {
+			return true
+		}
+	}
+	return false
+}
+
+func resourceHasCategory(resource domain.InstalledResource, category domain.ResourceCategory) bool {
+	for _, classification := range resource.Classifications {
+		if classification.Category == category {
 			return true
 		}
 	}
