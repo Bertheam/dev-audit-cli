@@ -116,6 +116,51 @@ func TestExplainProjectRequirementAndResource(t *testing.T) {
 	}
 }
 
+func TestRenderAndExplainDockerDaemonRelation(t *testing.T) {
+	document := sampleDocument()
+	constraint := "postgres:16"
+	resourceID := "resource-docker-image"
+	document.Projects[0].Requirements = append(document.Projects[0].Requirements, domain.Requirement{
+		ID:                "requirement-docker-image",
+		Ecosystem:         "docker",
+		Component:         "image",
+		VersionConstraint: &constraint,
+		Confidence:        domain.RequiredExplicitly,
+		Evidence:          []domain.Evidence{},
+		Warnings:          []string{},
+	})
+	document.InstalledResources = append(document.InstalledResources, domain.InstalledResource{
+		ID:              resourceID,
+		Ecosystem:       "docker",
+		Component:       "docker_image",
+		Version:         &constraint,
+		Path:            "docker://image/sha256%3Afixture",
+		ReferenceStatus: domain.Referenced,
+		Metadata:        []domain.MetadataEntry{{Key: "reference", Value: constraint}},
+		Warnings:        []string{},
+	})
+	document.Relations = append(document.Relations, domain.Relation{
+		ProjectID:     "project-one",
+		RequirementID: "requirement-docker-image",
+		Environment:   domain.EnvironmentDockerDaemon,
+		ResourceID:    &resourceID,
+		MatchStatus:   domain.Matched,
+		Rationale:     "the declared image is present in the local daemon",
+		Evidence:      []domain.Evidence{},
+		Warnings:      []string{},
+	})
+
+	terminal, err := RenderTerminal(document)
+	if err != nil || !bytes.Contains(terminal, []byte("[DOCKER_DAEMON:MATCHED]")) ||
+		!bytes.Contains(terminal, []byte(`docker://image/sha256%3Afixture`)) {
+		t.Fatalf("terminal did not expose Docker daemon relation: err=%v\n%s", err, terminal)
+	}
+	explanation, found, err := Explain(document, "requirement-docker-image")
+	if err != nil || !found || !bytes.Contains(explanation, []byte("DOCKER_DAEMON match: MATCHED")) {
+		t.Fatalf("explain did not expose Docker daemon relation: found=%v err=%v\n%s", found, err, explanation)
+	}
+}
+
 func TestTerminalEscapesControlCharacters(t *testing.T) {
 	document := sampleDocument()
 	document.Projects[0].Path = "/work/\x1b[31mred"

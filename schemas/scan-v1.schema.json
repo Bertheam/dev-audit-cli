@@ -75,7 +75,7 @@
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "path": {"type": "string", "minLength": 1},
-        "kind": {"enum": ["FLUTTER", "ANDROID", "FLUTTER_ANDROID"]},
+        "kind": {"enum": ["FLUTTER", "ANDROID", "FLUTTER_ANDROID", "DOCKER"]},
         "last_modified_at": {"type": "string", "format": "date-time"},
         "requirements": {
           "type": "array",
@@ -138,7 +138,7 @@
       "properties": {
         "project_id": {"type": "string", "minLength": 1},
         "requirement_id": {"type": "string", "minLength": 1},
-        "environment": {"enum": ["HOST", "DOCKER"]},
+        "environment": {"enum": ["HOST", "DOCKER", "DOCKER_DAEMON"]},
         "resource_id": {"type": "string", "minLength": 1},
         "match_status": {"enum": ["MATCHED", "MISSING", "AMBIGUOUS", "UNKNOWN"]},
         "rationale": {"type": "string", "minLength": 1},

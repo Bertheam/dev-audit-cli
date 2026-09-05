@@ -128,14 +128,21 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 			dockerResult := scanner.docker.Inspect(ctx, dockerinventory.Config{})
 			resources = append(resources, dockerResult.Resources...)
 			dockerDiagnostics = append(dockerDiagnostics, dockerResult.Diagnostics...)
+			for _, component := range dockerResult.CompleteComponents {
+				completeScopes = append(completeScopes, correlation.InventoryScope{
+					Ecosystem: "docker",
+					Component: component,
+				})
+			}
 		}
 	}
 
 	discoveryComplete := len(discoveryResult.Roots) > 0 &&
 		diagnosticsComplete(discoveryResult.Diagnostics) &&
 		!config.ProjectDiscoveryHeuristic
-	analysisComplete := discoveryComplete && diagnosticsComplete(analyzerDiagnostics)
-	correlationResult := correlation.Correlate(projects, resources, correlation.Coverage{
+	analysisComplete := discoveryComplete && diagnosticsComplete(analyzerDiagnostics) &&
+		environmentResult.Complete
+	correlationResult := correlation.Correlate(environmentResult.Projects, resources, correlation.Coverage{
 		ProjectDiscoveryComplete:    discoveryComplete,
 		RequirementAnalysisComplete: analysisComplete,
 		CompleteInventoryScopes:     completeScopes,

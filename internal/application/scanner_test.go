@@ -194,51 +194,6 @@ func TestScannerSeparatesHostAndDockerJDKRelations(t *testing.T) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
-
-func TestScannerIncludesRequestedDockerDaemonInventory(t *testing.T) {
-	projectRoot := t.TempDir()
-	clock := &sequenceClock{values: []time.Time{time.Unix(1, 0), time.Unix(2, 0)}}
-	dockerResource := domain.InstalledResource{
-		ID:              "resource-docker",
-		Ecosystem:       "docker",
-		Component:       "docker_image",
-		Path:            "docker://image/sha256:fixture",
-		ReferenceStatus: domain.ReferenceUnknown,
-		Metadata:        []domain.MetadataEntry{},
-		Warnings:        []string{},
-	}
-	scanner := application.NewScannerWithAdapters(
-		discovery.New(discovery.OSFileSystem{}),
-		analyzers.New(analyzers.OSFileSystem{}),
-		environments.New(environments.OSFileSystem{}),
-		inventory.New(inventory.OSFileSystem{}),
-		dockerInspectorStub{result: dockerinventory.Result{
-			Resources: []domain.InstalledResource{dockerResource},
-			Diagnostics: []domain.Diagnostic{{
-				Code:     "DOCKER_DAEMON_CONNECTED",
-				Severity: domain.SeverityInfo,
-				Scope:    "docker-inventory",
-				Message:  "fixture",
-			}},
-		}},
-		clock,
-		"test-version",
-	)
-	document := scanner.Scan(context.Background(), application.Config{
-		ProjectRoots:    []string{projectRoot},
-		DockerInventory: true,
-	})
-
-	if len(document.InstalledResources) != 1 || document.InstalledResources[0].ID != dockerResource.ID {
-		t.Fatalf("Docker daemon resource was not included: %#v", document.InstalledResources)
-	}
-	if !hasDiagnostic(document.Diagnostics, "DOCKER_DAEMON_CONNECTED") {
-		t.Fatalf("Docker daemon diagnostic was not preserved: %#v", document.Diagnostics)
-	}
-	if _, err := report.RenderJSON(document); err != nil {
-		t.Fatalf("Docker inventory document must satisfy JSON schema: %v", err)
-	}
-}
 `,
 		filepath.Join(projectRoot, "Dockerfile"): "FROM eclipse-temurin:21-jdk-alpine AS builder\n",
 	} {
@@ -272,6 +227,72 @@ func TestScannerIncludesRequestedDockerDaemonInventory(t *testing.T) {
 	}
 	if _, err := report.RenderJSON(document); err != nil {
 		t.Fatalf("environment-aware report must satisfy schema: %v", err)
+	}
+}
+
+func TestScannerCorrelatesDeclaredImageWithDockerDaemonInventory(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectRoot, "Dockerfile"), []byte("FROM postgres:16\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clock := &sequenceClock{values: []time.Time{time.Unix(1, 0), time.Unix(2, 0)}}
+	version := "postgres:16"
+	dockerResource := domain.InstalledResource{
+		ID:              "resource-docker",
+		Ecosystem:       "docker",
+		Component:       "docker_image",
+		Version:         &version,
+		Path:            "docker://image/sha256:fixture",
+		ReferenceStatus: domain.ReferenceUnknown,
+		Metadata:        []domain.MetadataEntry{{Key: "reference", Value: "postgres:16"}},
+		Warnings:        []string{},
+	}
+	scanner := application.NewScannerWithAdapters(
+		discovery.New(discovery.OSFileSystem{}),
+		analyzers.New(analyzers.OSFileSystem{}),
+		environments.New(environments.OSFileSystem{}),
+		inventory.New(inventory.OSFileSystem{}),
+		dockerInspectorStub{result: dockerinventory.Result{
+			Resources:          []domain.InstalledResource{dockerResource},
+			CompleteComponents: []string{"docker_image"},
+			Diagnostics: []domain.Diagnostic{{
+				Code:     "DOCKER_DAEMON_CONNECTED",
+				Severity: domain.SeverityInfo,
+				Scope:    "docker-inventory",
+				Message:  "fixture",
+			}},
+		}},
+		clock,
+		"test-version",
+	)
+	document := scanner.Scan(context.Background(), application.Config{
+		ProjectRoots:    []string{projectRoot},
+		DockerInventory: true,
+	})
+
+	if len(document.Projects) != 1 || document.Projects[0].Kind != domain.ProjectDocker ||
+		len(document.Projects[0].Requirements) != 1 {
+		t.Fatalf("Docker project requirement was not retained: %#v", document.Projects)
+	}
+	if len(document.InstalledResources) != 1 || document.InstalledResources[0].ID != dockerResource.ID ||
+		document.InstalledResources[0].ReferenceStatus != domain.Referenced {
+		t.Fatalf("Docker daemon resource was not correlated: %#v", document.InstalledResources)
+	}
+	matched := false
+	for _, relation := range document.Relations {
+		if relation.Environment == domain.EnvironmentDockerDaemon && relation.MatchStatus == domain.Matched &&
+			relation.ResourceID != nil && *relation.ResourceID == dockerResource.ID {
+			matched = true
+		}
+	}
+	if !matched {
+		t.Fatalf("expected a matched DOCKER_DAEMON relation: %#v", document.Relations)
+	}
+	if !hasDiagnostic(document.Diagnostics, "DOCKER_DAEMON_CONNECTED") {
+		t.Fatalf("Docker daemon diagnostic was not preserved: %#v", document.Diagnostics)
+	}
+	if _, err := report.RenderJSON(document); err != nil {
+		t.Fatalf("Docker inventory document must satisfy JSON schema: %v", err)
 	}
 }
 

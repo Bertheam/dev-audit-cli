@@ -2,12 +2,12 @@
 
 > Statut : MVP CLI 0.1.0 validé ; extensions fonctionnelles en cours
 > Plateforme : macOS
-> Périmètre : Flutter et Android
+> Périmètre : Flutter, Android et Docker
 > Interface cible : CLI `dev-audit`
 
 Dev Environment Auditor doit établir une carte vérifiable entre les projets
-Flutter/Android et les toolchains locales qu'ils exigent. La Phase 0 privilégie
-la preuve, la traçabilité et l'expression honnête de l'incertitude.
+Flutter/Android/Docker et les toolchains locales qu'ils exigent. La Phase 0
+privilégie la preuve, la traçabilité et l'expression honnête de l'incertitude.
 
 Le projet n'est pas un nettoyeur. Il ne contient aucune fonction de suppression,
 d'installation, de réparation, de build, de télémétrie ou de synchronisation.
@@ -17,11 +17,12 @@ d'installation, de réparation, de build, de télémétrie ou de synchronisation
 La CLI devra :
 
 - détecter automatiquement les racines probables, avec mode explicite disponible ;
-- découvrir les projets Flutter et Android sans suivre les symlinks externes ;
+- découvrir les projets Flutter, Android et Docker sans suivre les symlinks externes ;
 - extraire les exigences Flutter/FVM, Dart, Gradle, AGP, JDK, SDK et NDK ;
 - inventorier les installations pertinentes et estimer leur taille ;
 - relier projets, exigences et ressources installées ;
 - distinguer les correspondances de l'hôte de celles déclarées par Docker ;
+- distinguer aussi une déclaration d'image de sa présence dans le daemon local ;
 - rattacher chaque conclusion à des preuves et à un niveau de confiance ;
 - produire un rapport terminal et un export JSON v1 déterministes.
 
@@ -91,13 +92,27 @@ seule la taille de leur couche inscriptible est publiée. Le cache conserve le
 signal `Reclaimable` produit par Docker, accompagné d'un avertissement clair :
 ce signal n'autorise aucune suppression.
 
+L'analyse Docker couvre maintenant les quatre noms Compose standards et les
+`Dockerfile` usuels. Chaque `FROM` externe statique et chaque
+`services.*.image` statique devient une exigence `docker/image`, y compris pour
+Node, Python, PHP, bases de données et autres images non-Java. Les alias de
+stages multi-stage, `scratch`, les valeurs interpolées et les structures YAML
+non prouvées ne deviennent pas de fausses exigences. Les projets uniquement
+Docker sont découverts comme `DOCKER`; les dossiers de dépendances `vendor` et
+`node_modules` restent exclus.
+
+Une exigence d'image est comparée aux références de l'inventaire global du
+daemon dans l'environnement `DOCKER_DAEMON`. Cette relation peut pointer vers
+une ressource `docker_image`. Elle est différente de `DOCKER`, qui décrit une
+toolchain déclarée dans un fichier sans affirmer que l'image existe localement.
+
 Go 1.27.1 est installé via Homebrew sur le poste de développement. Les tests,
 les tests avec détecteur de concurrence, `go vet` et la commande
 `dev-audit version` passent.
 
 La vision plus large d'origine est conservée dans
 [`docs/vision.md`](docs/vision.md). Le MVP Phase 0 reste figé ; l'inventaire du
-daemon et des caches Docker appartient aux extensions post-MVP en lecture
+daemon et des caches Docker a été ajouté comme extension post-MVP en lecture
 seule. Le lancement de conteneurs, le nettoyage, la GUI et le cloud restent
 hors périmètre actuel.
 
@@ -272,6 +287,17 @@ compare cette même exigence aux images JDK déclarées statiquement dans les
 `Dockerfile`. Un match Docker n'est jamais ajouté aux ressources installées de
 l'hôte, n'exécute pas Docker et ne prouve ni le téléchargement de l'image ni
 l'état d'un conteneur.
+
+Une image déclarée possède une lecture distincte de l'état local :
+
+```text
+[DOCKER_DAEMON:MATCHED] "docker"/"image" constraint="postgres:17-alpine"
+```
+
+`DOCKER_DAEMON:MATCHED` signifie que la référence est présente dans la liste
+d'images du daemon courant. `DOCKER_DAEMON:MISSING` signifie uniquement qu'elle
+n'est pas présente dans cet inventaire complet ; la CLI ne la télécharge pas et
+ne lance aucun conteneur.
 
 Créer un rapport JSON local puis expliquer un identifiant affiché :
 

@@ -170,6 +170,21 @@ func TestDetectDeepSearchFindsNonstandardRootsAndFiltersFlutterSDKProject(t *tes
 	}
 }
 
+func TestDetectDeepSearchFindsDockerOnlyProject(t *testing.T) {
+	home := t.TempDir()
+	project := filepath.Join(home, "Documents", "clients", "docker-stack")
+	writeFile(t, filepath.Join(project, "compose.yml"), "services:\n  db:\n    image: postgres:16\n")
+	detector := NewWithAdapters(osFileSystem{}, fakeEnvironment{
+		home:        home,
+		workingDir:  home,
+		variables:   map[string]string{},
+		executables: map[string]string{},
+	}, "test")
+
+	result := detector.Detect(context.Background(), Config{NeedProjectRoots: true, DeepSearch: true})
+	assertPaths(t, result.Roots.ProjectRoots, project)
+}
+
 func TestDetectDeepSearchIsBounded(t *testing.T) {
 	home := t.TempDir()
 	for index := range 20 {

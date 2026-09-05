@@ -312,7 +312,7 @@ sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est le Lot 8 �
 Inventaire Docker en lecture seule ; la publication et la validation
 multi-machines restent reportées à la finalisation.
 
-## 16. Lot 8 en cours — état Docker local
+## 16. Lot 8 terminé — état Docker local et déclarations Compose
 
 Le scanner détecte maintenant la CLI Docker et traite un daemon absent comme
 une capacité optionnelle. Lorsqu'il répond, cinq commandes de lecture au maximum
@@ -323,11 +323,24 @@ sortie ; l'ensemble reste borné par le timeout global du scan.
 Les formats CLI demandent uniquement des champs allowlistés. Les commandes,
 labels, variables, montages et contenus des conteneurs ne sont jamais demandés.
 Les ressources Docker utilisent un localisateur `docker://` pour ne pas les
-confondre avec un chemin de l'hôte. Elles restent `UNKNOWN` tant que l'analyse
-statique Docker/Compose n'a pas établi de référence.
+confondre avec un chemin de l'hôte.
 
 Le test réel du Mac 01 a trouvé 51 images, 19 conteneurs, 2 builders et 44
 enregistrements BuildKit sans diagnostic `WARNING` ou `ERROR`. Il a également
 permis de rendre le scanner compatible avec un plugin Buildx plus ancien que la
 documentation courante : les timeouts sont imposés par Go plutôt que par une
 option CLI facultative.
+
+La seconde étape détecte les projets Docker seuls, les quatre noms Compose
+standards et `Dockerfile.*`. Les `FROM` externes et `services.*.image` statiques
+deviennent des exigences `docker/image`; cela couvre les toolchains non-Java
+sans prétendre qu'elles sont installées sur l'hôte. Les dépendances `vendor` et
+`node_modules`, les alias multi-stage, `scratch` et les valeurs dynamiques sont
+exclus ou laissés inconnus.
+
+La corrélation `DOCKER_DAEMON` compare ces exigences aux références d'images du
+daemon. Sur le Mac 01, le scan complet a trouvé 8 projets Docker seuls, 34
+exigences d'images, 10 correspondances et 24 images déclarées absentes. Le même
+passage a inventorié 52 images, 19 conteneurs, 2 builders et 48 enregistrements
+BuildKit, sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est
+le Lot 9 — classification explicable.

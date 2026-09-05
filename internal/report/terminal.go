@@ -39,8 +39,9 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 
 	requirementCount := 0
 	matchCounts := map[domain.ExecutionEnvironment]map[domain.MatchStatus]int{
-		domain.EnvironmentHost:   {},
-		domain.EnvironmentDocker: {},
+		domain.EnvironmentHost:         {},
+		domain.EnvironmentDocker:       {},
+		domain.EnvironmentDockerDaemon: {},
 	}
 	resourceCounts := map[domain.ReferenceStatus]int{}
 	for _, project := range document.Projects {
@@ -58,6 +59,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	)
 	writeRelationCounts(&output, domain.EnvironmentHost, matchCounts[domain.EnvironmentHost])
 	writeRelationCounts(&output, domain.EnvironmentDocker, matchCounts[domain.EnvironmentDocker])
+	writeRelationCounts(&output, domain.EnvironmentDockerDaemon, matchCounts[domain.EnvironmentDockerDaemon])
 	fmt.Fprintf(&output,
 		"Resources: REFERENCED=%d NO_REFERENCE_FOUND=%d UNKNOWN=%d\n",
 		resourceCounts[domain.Referenced], resourceCounts[domain.NoReferenceFound],
@@ -75,14 +77,13 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 			continue
 		}
 		for _, requirement := range project.Requirements {
-			relation, exists := relations[relationMapKey(project.ID, requirement.ID, domain.EnvironmentHost)]
-			if !exists {
-				relation.MatchStatus = domain.MatchUnknown
-			}
-			dockerRelation, dockerExists := relations[relationMapKey(project.ID, requirement.ID, domain.EnvironmentDocker)]
-			fmt.Fprintf(&output, "    - [HOST:%s", relation.MatchStatus)
-			if dockerExists {
-				fmt.Fprintf(&output, " DOCKER:%s", dockerRelation.MatchStatus)
+			requirementRelations := reportRelationsForRequirement(relations, project.ID, requirement.ID)
+			fmt.Fprintf(&output, "    - [")
+			for index, relation := range requirementRelations {
+				if index > 0 {
+					output.WriteByte(' ')
+				}
+				fmt.Fprintf(&output, "%s:%s", relationEnvironment(relation), relation.MatchStatus)
 			}
 			fmt.Fprintf(&output, "] %s/%s constraint=%s confidence=%s",
 				terminalValue(requirement.Ecosystem),
@@ -90,11 +91,14 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 				optionalTerminalValue(requirement.VersionConstraint),
 				requirement.Confidence,
 			)
-			if relation.ResourceID != nil {
-				if resource, exists := resources[*relation.ResourceID]; exists {
-					fmt.Fprintf(&output, " -> %s", terminalValue(resource.Path))
-				} else {
-					fmt.Fprintf(&output, " -> resource=%s", terminalValue(*relation.ResourceID))
+			for _, relation := range requirementRelations {
+				if relation.ResourceID != nil {
+					if resource, exists := resources[*relation.ResourceID]; exists {
+						fmt.Fprintf(&output, " -> %s", terminalValue(resource.Path))
+					} else {
+						fmt.Fprintf(&output, " -> resource=%s", terminalValue(*relation.ResourceID))
+					}
+					break
 				}
 			}
 			output.WriteByte('\n')
@@ -135,6 +139,30 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 
 	fmt.Fprintf(&output, "\nSafety: %s\n", safetyNotice)
 	return []byte(output.String()), nil
+}
+
+func reportRelationsForRequirement(
+	relations map[string]domain.Relation,
+	projectID string,
+	requirementID string,
+) []domain.Relation {
+	result := []domain.Relation{}
+	for _, environment := range []domain.ExecutionEnvironment{
+		domain.EnvironmentHost,
+		domain.EnvironmentDocker,
+		domain.EnvironmentDockerDaemon,
+	} {
+		if relation, exists := relations[relationMapKey(projectID, requirementID, environment)]; exists {
+			result = append(result, relation)
+		}
+	}
+	if len(result) == 0 {
+		result = append(result, domain.Relation{
+			Environment: domain.EnvironmentHost,
+			MatchStatus: domain.MatchUnknown,
+		})
+	}
+	return result
 }
 
 func writeRelationCounts(

@@ -1,6 +1,6 @@
 # ADR 0013 — Inventaire borné du daemon Docker
 
-- Statut : accepté partiellement ; analyse Compose encore ouverte
+- Statut : accepté
 - Date : 2026-09-05
 
 ## Contexte
@@ -36,8 +36,10 @@ recopiées dans le rapport.
 
 Les ressources utilisent les composants `docker_image`, `docker_container`,
 `docker_builder` et `docker_build_cache`, avec un localisateur `docker://` dans
-le champ historique `path`. Elles restent `UNKNOWN` : l'inventaire local ne
-prouve pas encore qu'un projet les utilise.
+le champ historique `path`. Les images peuvent devenir `REFERENCED` lorsqu'une
+exigence statique de projet leur correspond. Les autres ressources Docker
+restent `UNKNOWN`; une présence locale ne prouve pas à elle seule qu'un projet
+les utilise.
 
 La taille d'une image est sa taille virtuelle et peut partager des couches. La
 taille d'un conteneur ne couvre que sa couche inscriptible. BuildKit fournit un
@@ -47,6 +49,11 @@ qui interdit de le transformer en autorisation de suppression.
 Docker absent ou daemon indisponible produit un diagnostic `INFO` et ne bloque
 pas le reste du scan. L'option `--docker-inventory=false` désactive entièrement
 ces appels.
+
+La corrélation ajoutée par l'ADR 0014 utilise l'environnement
+`DOCKER_DAEMON`, distinct de la déclaration de toolchain `DOCKER`. La commande
+`docker image ls` ne déclare son type complètement couvert que si elle réussit
+sans timeout, limite de sortie, limite de ressources ou donnée malformée.
 
 ## Compatibilité
 

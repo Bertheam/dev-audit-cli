@@ -68,6 +68,9 @@ func TestInspectInventoriesAllowlistedDockerResources(t *testing.T) {
 	if len(result.Resources) != 4 || result.Stats.CommandsRun != 5 || result.Stats.ResourcesFound != 4 {
 		t.Fatalf("unexpected Docker inventory: %#v", result)
 	}
+	if !reflect.DeepEqual(result.CompleteComponents, []string{"docker_image"}) {
+		t.Fatalf("complete Docker scopes = %#v", result.CompleteComponents)
+	}
 	image := findDockerResource(result.Resources, "docker_image")
 	if image == nil || image.SizeBytes == nil || *image.SizeBytes != 72_900_000 ||
 		!hasDockerMetadata(image.Metadata, "reference", "postgres:16") ||
@@ -144,6 +147,9 @@ func TestInspectBoundsOutputAndResourceCount(t *testing.T) {
 	if len(result.Resources) != 1 || !hasDockerDiagnostic(result.Diagnostics, "DOCKER_INVENTORY_OUTPUT_LIMIT_REACHED", domain.SeverityWarning) ||
 		!hasDockerDiagnostic(result.Diagnostics, "DOCKER_INVENTORY_MAX_RESOURCES_REACHED", domain.SeverityWarning) {
 		t.Fatalf("bounds were not enforced: %#v", result)
+	}
+	if len(result.CompleteComponents) != 0 {
+		t.Fatalf("truncated image inventory must not be complete: %#v", result.CompleteComponents)
 	}
 }
 

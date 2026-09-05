@@ -39,9 +39,10 @@ type Stats struct {
 }
 
 type Result struct {
-	Resources   []domain.InstalledResource
-	Diagnostics []domain.Diagnostic
-	Stats       Stats
+	Resources          []domain.InstalledResource
+	Diagnostics        []domain.Diagnostic
+	CompleteComponents []string
+	Stats              Stats
 }
 
 type Inspector struct {
@@ -110,11 +111,13 @@ func (inspector *Inspector) Inspect(ctx context.Context, config Config) Result {
 
 	commands := []struct {
 		label     string
+		component string
 		arguments []string
 		parse     func([]byte, int) ([]domain.InstalledResource, []domain.Diagnostic)
 	}{
 		{
-			label: "docker image ls",
+			label:     "docker image ls",
+			component: "docker_image",
 			arguments: []string{
 				"image", "ls", "--all", "--digests", "--no-trunc", "--format",
 				"{{json .ID}}\t{{json .Repository}}\t{{json .Tag}}\t{{json .Digest}}\t{{json .CreatedAt}}\t{{json .Size}}",
@@ -188,6 +191,9 @@ func (inspector *Inspector) Inspect(ctx context.Context, config Config) Result {
 		resources, diagnostics := command.parse(commandResult.Stdout, remaining)
 		result.Resources = append(result.Resources, resources...)
 		result.Diagnostics = append(result.Diagnostics, diagnostics...)
+		if command.component != "" && diagnosticsComplete(diagnostics) {
+			result.CompleteComponents = append(result.CompleteComponents, command.component)
+		}
 		remaining -= len(resources)
 	}
 	return finalize(result)
@@ -711,7 +717,17 @@ func finalize(result Result) Result {
 		return leftKey < rightKey
 	})
 	result.Stats.ResourcesFound = len(result.Resources)
+	result.CompleteComponents = sortedUniqueStrings(result.CompleteComponents)
 	return result
+}
+
+func diagnosticsComplete(diagnostics []domain.Diagnostic) bool {
+	for _, item := range diagnostics {
+		if item.Severity == domain.SeverityWarning || item.Severity == domain.SeverityError {
+			return false
+		}
+	}
+	return true
 }
 
 func entry(key, value string) domain.MetadataEntry {

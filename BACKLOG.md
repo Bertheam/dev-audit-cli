@@ -116,7 +116,8 @@ Retours du premier Mac :
 - [x] Interdire `MISSING` et `NO_REFERENCE_FOUND` sur couverture heuristique.
 - [x] Réduire le bruit des diagnostics de symlinks à un résumé par racine.
 - [x] Distinguer une toolchain hôte d'une toolchain JDK déclarée par Docker.
-- [ ] Étendre prudemment l’analyse Docker aux toolchains non-Java pertinentes.
+- [x] Étendre prudemment l’analyse Docker aux images de toolchains non-Java sans
+  les confondre avec des installations de l'hôte.
 
 ## Extensions fonctionnelles post-MVP — ordre courant
 
@@ -138,7 +139,8 @@ action de nettoyage proposée.
 
 ### Lot 8 — Inventaire Docker en lecture seule
 
-- [ ] Étendre l'analyse statique à Docker Compose et aux toolchains non-Java.
+- [x] Étendre l'analyse statique à Docker Compose et aux images de toolchains
+  non-Java.
 - [x] Détecter la disponibilité du client et du daemon sans en faire une
   condition de réussite du scan.
 - [x] Inventorier builders, cache BuildKit, images et conteneurs avec budgets de
@@ -148,8 +150,14 @@ action de nettoyage proposée.
 
 Validation intermédiaire sur le Mac 01 : 51 images dédupliquées, 19 conteneurs,
 2 builders et 44 enregistrements de cache BuildKit inventoriés sans diagnostic
-`WARNING` ou `ERROR`. L'analyse Compose et des toolchains non-Java reste ouverte
-avant de fermer le lot.
+`WARNING` ou `ERROR`.
+
+Gate validé sur le Mac 01 après l'analyse statique : 8 projets Docker seuls et
+34 exigences d'images détectés hors dépendances vendoriées ; 10 images déclarées
+présentes et 24 absentes du daemon courant ; 52 images, 19 conteneurs, 2 builders
+et 48 enregistrements BuildKit inventoriés, sans diagnostic `WARNING` ou
+`ERROR`. Les déclarations `FROM`/Compose, l'état `DOCKER_DAEMON` et les
+installations `HOST` restent séparés.
 
 ### Lot 9 — Classification explicable
 

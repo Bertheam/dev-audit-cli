@@ -14,6 +14,7 @@ const (
 	ProjectFlutter ProjectKind = "FLUTTER"
 	ProjectAndroid ProjectKind = "ANDROID"
 	ProjectHybrid  ProjectKind = "FLUTTER_ANDROID"
+	ProjectDocker  ProjectKind = "DOCKER"
 )
 
 type Confidence string
@@ -44,8 +45,9 @@ const (
 type ExecutionEnvironment string
 
 const (
-	EnvironmentHost   ExecutionEnvironment = "HOST"
-	EnvironmentDocker ExecutionEnvironment = "DOCKER"
+	EnvironmentHost         ExecutionEnvironment = "HOST"
+	EnvironmentDocker       ExecutionEnvironment = "DOCKER"
+	EnvironmentDockerDaemon ExecutionEnvironment = "DOCKER_DAEMON"
 )
 
 type DiagnosticSeverity string
@@ -162,7 +164,7 @@ func (document ScanDocument) Validate() error {
 		if environment == "" {
 			environment = EnvironmentHost
 		}
-		if environment != EnvironmentHost && environment != EnvironmentDocker {
+		if environment != EnvironmentHost && environment != EnvironmentDocker && environment != EnvironmentDockerDaemon {
 			return fmt.Errorf("relations[%d].environment is invalid", index)
 		}
 		if environment == EnvironmentDocker && relation.ResourceID != nil {

@@ -2,7 +2,7 @@
 
 ## Contexte
 
-La Phase 0 est une CLI macOS locale, limitée à Flutter et Android. Elle produit
+La Phase 0 est une CLI macOS locale pour Flutter, Android et Docker. Elle produit
 des observations vérifiables sans modifier les projets ni les toolchains.
 
 ## Flux principal
@@ -12,8 +12,8 @@ Arguments CLI
   -> auto-détection ou validation des racines et exclusions
   -> discovery
   -> analyzers
-  -> environment analyzers (Dockerfile statique)
-  -> inventory adapters
+  -> environment analyzers (Dockerfile et Compose statiques)
+  -> inventory adapters (hôte et daemon Docker)
   -> correlation
   -> evidence/confidence
   -> terminal ou JSON v1
@@ -77,14 +77,16 @@ Une racine de projets auto-détectée rend volontairement incomplète la couvert
 de découverte pour la corrélation : aucun `NO_REFERENCE_FOUND` n'en découle. De
 même, une famille d'inventaire automatique n'autorise jamais `MISSING`. Une
 correspondance positive exacte reste possible dans les deux cas. La corrélation
-des ressources installées produit uniquement des relations `HOST` ; les
-relations `DOCKER` proviennent de l'analyse déclarative séparée.
+des ressources hôte produit des relations `HOST`; l'analyse déclarative des
+toolchains produit `DOCKER`; la présence d'une image déclarée dans le daemon
+produit `DOCKER_DAEMON`.
 
 ### `internal/domain`
 
 Contient les types `Scan`, `Project`, `Requirement`, `InstalledResource`,
 `Relation`, `Evidence` et `Diagnostic`, ainsi que leurs invariants. Une relation
-porte l'environnement `HOST` ou `DOCKER`. Pour compatibilité avec les premiers
+porte l'environnement `HOST`, `DOCKER` ou `DOCKER_DAEMON`. Pour compatibilité
+avec les premiers
 rapports JSON v1, l'absence du champ `environment` se lit comme `HOST`.
 
 ### `internal/discovery`
@@ -104,8 +106,14 @@ La reconnaissance reste volontairement conservatrice :
   `android` ;
 - Android : `settings.gradle(.kts)` accompagné d'un Gradle Wrapper ou d'un
   `AndroidManifest.xml` sous un module ;
+- Docker : `Dockerfile`, `Dockerfile.*` ou un des quatre noms Compose standards ;
 - `<projet-flutter>/android` est replié dans un projet `FLUTTER_ANDROID` plutôt
   que signalé deux fois.
+
+Un marqueur Docker inclus dans un projet Flutter/Android enrichit ce projet sans
+remplacer son type. Un `Dockerfile` sous un projet Compose n'est pas publié
+comme projet séparé. Les dépendances sous `vendor` et `node_modules` sont
+exclues.
 
 Ces marqueurs établissent uniquement une frontière de projet. Leur contenu et
 les versions déclarées relèvent du Lot 2.
@@ -131,9 +139,9 @@ une URL ou une expression potentiellement sensible.
 ### `internal/environments`
 
 Analyse statiquement les environnements déclaratifs séparés de l'hôte. Le
-premier adaptateur parcourt les `Dockerfile` sous chaque projet avec des budgets
-de 50 000 entrées, 32 fichiers, une profondeur de 6 et 1 Mio par fichier. Il ne
-lance ni Docker ni une image.
+premier adaptateur parcourt les `Dockerfile` et fichiers Compose standards sous
+chaque projet avec des budgets de 50 000 entrées, 32 fichiers, une profondeur de
+6 et 1 Mio par fichier. Il ne lance ni Docker ni une image.
 
 Les images Temurin, OpenJDK, Corretto, Gradle et Maven permettent actuellement
 d'extraire un niveau de fonctionnalité JDK. Une image `jre` n'est jamais traitée
@@ -143,6 +151,13 @@ l'exigence. Elle n'a aucun `resource_id` et n'entre pas dans l'inventaire HOST.
 Le moteur ne produit pas encore de conclusion `DOCKER:MISSING`.
 Les symlinks restent ignorés silencieusement par cet adaptateur, car Discovery
 les a déjà comptés pour la même racine et possède le diagnostic de synthèse.
+
+Chaque image externe statique d'un `FROM` et chaque valeur scalaire statique de
+`services.*.image` devient aussi une exigence `docker/image`. Les alias de stage
+et `scratch` sont exclus ; les interpolations et structures Compose non prises
+en charge sont diagnostiquées sans interprétation. Cette représentation couvre
+les images de toolchains non-Java sans déduire abusivement une installation
+Node, Python ou PHP sur l'hôte.
 
 ### `internal/inventory`
 
@@ -160,6 +175,14 @@ La métrique `size_bytes` est la somme logique des fichiers réguliers. Les
 symlinks ne sont pas suivis. Dès qu'une permission, une limite ou l'annulation
 rend le parcours incomplet, la taille est absente et un diagnostic explique la
 couverture manquante. La taille allouée APFS n'est pas estimée dans cette phase.
+
+### `internal/dockerinventory`
+
+Interroge facultativement le daemon avec cinq commandes Docker strictement
+allowlistées et bornées. Il inventorie images, conteneurs, builders et cache
+BuildKit sans demander commandes, labels, variables, montages ou contenus. Le
+type `docker_image` est déclaré complètement couvert uniquement si la commande
+de liste réussit sans timeout, troncature ni ligne malformée.
 
 ### `internal/correlation`
 
@@ -179,6 +202,13 @@ comparé par niveau de fonctionnalité (`17` avec `17.0.12`, ou `8` avec
 `1.8.0_442`). Les contraintes Dart stables acceptées sont `any`, une version
 exacte, les comparateurs intersectés et la notation caret. Elles sont évaluées
 sur `dart_sdk_version` du SDK Flutter inventorié.
+
+Les exigences `docker/image` sont normalisées selon les formes usuelles de
+référence : registre Docker Hub implicite, namespace `library` et tag `latest`.
+Elles sont comparées aux métadonnées `reference` et `digest` des images locales.
+Une relation `DOCKER_DAEMON:MISSING` exige un inventaire d'images complet ; les
+images locales non reliées restent `UNKNOWN` si la découverte de projets est
+heuristique.
 
 ### `internal/evidence`
 

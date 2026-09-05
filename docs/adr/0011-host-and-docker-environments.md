@@ -36,6 +36,10 @@ diagnostic pour les mêmes projets.
 ## Conséquences
 
 L'API de validation peut être décrite honnêtement comme `HOST:UNKNOWN` et
-`DOCKER:MATCHED`. L'inventaire, le cache, le daemon et l'exécution Docker restent
-hors périmètre. Le contrat JSON v1 gagne un champ additif `environment`, et les
-reporters affichent séparément les totaux HOST et DOCKER.
+`DOCKER:MATCHED`. À cette étape, l'inventaire, le cache, le daemon et l'exécution
+Docker restaient hors périmètre. Le contrat JSON v1 gagne un champ additif
+`environment`, et les reporters affichent séparément les totaux HOST et DOCKER.
+
+L'ADR 0013 a ensuite ajouté l'inventaire du daemon en lecture seule et l'ADR
+0014 sa corrélation distincte sous `DOCKER_DAEMON`. L'exécution d'images et les
+actions de mutation restent hors périmètre.

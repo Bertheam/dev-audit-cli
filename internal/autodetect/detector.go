@@ -567,10 +567,12 @@ func (detector *Detector) detectMarkerFile(
 	located *locatedRoots,
 ) {
 	if config.NeedProjectRoots {
-		switch name {
-		case "pubspec.yaml", "settings.gradle", "settings.gradle.kts", ".fvmrc":
+		switch {
+		case isDockerProjectMarker(name):
 			detector.addProjectRoot(located.projects, filepath.Dir(path), "bounded deep search")
-		case "AndroidManifest.xml":
+		case name == "pubspec.yaml" || name == "settings.gradle" || name == "settings.gradle.kts" || name == ".fvmrc":
+			detector.addProjectRoot(located.projects, filepath.Dir(path), "bounded deep search")
+		case name == "AndroidManifest.xml":
 			detector.addAndroidProjectAncestor(located.projects, searchRoot, filepath.Dir(path))
 		}
 	}
@@ -705,7 +707,7 @@ func shouldPruneDirectory(name string) bool {
 	switch name {
 	case ".dart_tool", ".git", ".gradle", ".idea", ".pub-cache", ".Trash",
 		".venv", "Pods", "__pycache__", "build", "DerivedData", "dist",
-		"env", "node_modules", "target", "testdata", "venv":
+		"env", "node_modules", "target", "testdata", "vendor", "venv":
 		return true
 	default:
 		return false
@@ -901,7 +903,29 @@ func (detector *Detector) isProjectRoot(root string) bool {
 	gradle := (detector.isRegularFile(filepath.Join(root, "settings.gradle")) ||
 		detector.isRegularFile(filepath.Join(root, "settings.gradle.kts"))) &&
 		detector.isRegularFile(filepath.Join(root, "gradle", "wrapper", "gradle-wrapper.properties"))
-	return flutter || gradle
+	docker := false
+	if entries, err := detector.fileSystem.ReadDir(root); err == nil {
+		for _, entry := range entries {
+			if isDockerProjectMarker(entry.Name()) && detector.isRegularFile(filepath.Join(root, entry.Name())) {
+				docker = true
+				break
+			}
+		}
+	}
+	return flutter || gradle || docker
+}
+
+func isDockerProjectMarker(name string) bool {
+	lower := strings.ToLower(name)
+	if lower == "dockerfile" || strings.HasPrefix(lower, "dockerfile.") {
+		return true
+	}
+	switch lower {
+	case "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
+		return true
+	default:
+		return false
+	}
 }
 
 func (detector *Detector) isAndroidSDK(root string) bool {

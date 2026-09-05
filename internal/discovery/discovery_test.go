@@ -52,6 +52,39 @@ func TestDiscoverFlutterAndAndroidProjects(t *testing.T) {
 	}
 }
 
+func TestDiscoverDockerOnlyProjectAndAbsorbsNestedDockerfiles(t *testing.T) {
+	root := t.TempDir()
+	dockerRoot := filepath.Join(root, "stack")
+	writeFixture(t, filepath.Join(dockerRoot, "compose.yaml"), "services:\n  api:\n    build: ./api\n")
+	writeFixture(t, filepath.Join(dockerRoot, "api", "Dockerfile.dev"), "FROM alpine:3.22\n")
+	writeFixture(t, filepath.Join(root, "vendor", "dependency", "Dockerfile"), "FROM php:8.4\n")
+	flutterRoot := filepath.Join(root, "mobile")
+	createFlutterProject(t, flutterRoot, false)
+	writeFixture(t, filepath.Join(flutterRoot, "Dockerfile"), "FROM ghcr.io/cirruslabs/flutter:3.35.0\n")
+
+	result := New(OSFileSystem{}).Discover(context.Background(), Config{Roots: []string{root}})
+	if len(result.Projects) != 2 {
+		t.Fatalf("expected Docker and Flutter projects, got %#v", result.Projects)
+	}
+	if !containsProject(result.Projects, dockerRoot) || !containsProject(result.Projects, flutterRoot) {
+		t.Fatalf("expected project roots were not discovered: %#v", result.Projects)
+	}
+	for _, project := range result.Projects {
+		if project.Path == dockerRoot && project.Kind != domain.ProjectDocker {
+			t.Fatalf("Docker-only project kind = %s", project.Kind)
+		}
+		if project.Path == filepath.Join(dockerRoot, "api") {
+			t.Fatal("Dockerfile nested below a Compose project must not create a duplicate project")
+		}
+		if strings.Contains(project.Path, string(filepath.Separator)+"vendor"+string(filepath.Separator)) {
+			t.Fatalf("vendored dependency must not become a project: %s", project.Path)
+		}
+		if project.Path == flutterRoot && project.Kind != domain.ProjectFlutter {
+			t.Fatalf("Docker marker must not replace Flutter kind: %s", project.Kind)
+		}
+	}
+}
+
 func TestDiscoverHonorsDefaultAndConfiguredExclusions(t *testing.T) {
 	root := t.TempDir()
 	includedRoot := filepath.Join(root, "included")

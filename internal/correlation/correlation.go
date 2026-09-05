@@ -41,6 +41,7 @@ const (
 	strategyFlutter
 	strategyDart
 	strategyJDKFeature
+	strategyDockerImage
 )
 
 type requirementTarget struct {
@@ -48,6 +49,7 @@ type requirementTarget struct {
 	component   string
 	description string
 	strategy    versionStrategy
+	environment domain.ExecutionEnvironment
 }
 
 type candidateEvaluation int
@@ -161,6 +163,7 @@ func correlateRequirement(
 		))
 		return relation, nil, nil, diagnostics
 	}
+	relation.Environment = target.environment
 
 	candidates := append([]int(nil), resourceIndexes[resourceKey(target.ecosystem, target.component)]...)
 	if requirement.Confidence != domain.RequiredExplicitly {
@@ -261,23 +264,25 @@ func targetFor(requirement domain.Requirement) (requirementTarget, bool) {
 	key := resourceKey(requirement.Ecosystem, requirement.Component)
 	switch key {
 	case resourceKey("android", "compile_sdk"), resourceKey("android", "android_sdk_platform"):
-		return requirementTarget{"android", "android_sdk_platform", "Android SDK platform", strategyExact}, true
+		return requirementTarget{"android", "android_sdk_platform", "Android SDK platform", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("android", "ndk"):
-		return requirementTarget{"android", "ndk", "Android NDK", strategyExact}, true
+		return requirementTarget{"android", "ndk", "Android NDK", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("android", "cmake"):
-		return requirementTarget{"android", "cmake", "CMake package", strategyExact}, true
+		return requirementTarget{"android", "cmake", "CMake package", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("android", "android_gradle_plugin"):
-		return requirementTarget{"android", "android_gradle_plugin", "Android Gradle Plugin", strategyExact}, true
+		return requirementTarget{"android", "android_gradle_plugin", "Android Gradle Plugin", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("flutter", "flutter_sdk"):
-		return requirementTarget{"flutter", "flutter_sdk", "Flutter SDK", strategyFlutter}, true
+		return requirementTarget{"flutter", "flutter_sdk", "Flutter SDK", strategyFlutter, domain.EnvironmentHost}, true
 	case resourceKey("dart", "dart_sdk"):
-		return requirementTarget{"flutter", "flutter_sdk", "Flutter-bundled Dart SDK", strategyDart}, true
+		return requirementTarget{"flutter", "flutter_sdk", "Flutter-bundled Dart SDK", strategyDart, domain.EnvironmentHost}, true
 	case resourceKey("gradle", "gradle"):
-		return requirementTarget{"gradle", "gradle", "Gradle distribution", strategyExact}, true
+		return requirementTarget{"gradle", "gradle", "Gradle distribution", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("kotlin", "kotlin_gradle_plugin"):
-		return requirementTarget{"kotlin", "kotlin_gradle_plugin", "Kotlin Gradle Plugin", strategyExact}, true
+		return requirementTarget{"kotlin", "kotlin_gradle_plugin", "Kotlin Gradle Plugin", strategyExact, domain.EnvironmentHost}, true
 	case resourceKey("java", "jdk"):
-		return requirementTarget{"java", "jdk", "JDK", strategyJDKFeature}, true
+		return requirementTarget{"java", "jdk", "JDK", strategyJDKFeature, domain.EnvironmentHost}, true
+	case resourceKey("docker", "image"):
+		return requirementTarget{"docker", "docker_image", "Docker daemon image", strategyDockerImage, domain.EnvironmentDockerDaemon}, true
 	default:
 		return requirementTarget{}, false
 	}
@@ -293,7 +298,8 @@ func isCorrelatableResource(resource domain.InstalledResource) bool {
 		resourceKey("flutter", "flutter_sdk"),
 		resourceKey("gradle", "gradle"),
 		resourceKey("kotlin", "kotlin_gradle_plugin"),
-		resourceKey("java", "jdk"):
+		resourceKey("java", "jdk"),
+		resourceKey("docker", "docker_image"):
 		return true
 	default:
 		return false

@@ -35,6 +35,7 @@ var defaultExcludedDirectories = map[string]struct{}{
 	"Pods":         {},
 	"build":        {},
 	"node_modules": {},
+	"vendor":       {},
 }
 
 type Limits struct {
@@ -357,6 +358,8 @@ type projectMarkers struct {
 	androidDirectory bool
 	gradleSettings   bool
 	gradleWrapper    bool
+	dockerfile       bool
+	composeFile      bool
 }
 
 func recordMarkers(
@@ -392,6 +395,26 @@ func recordMarkers(
 		if filepath.Base(directory) == "main" && filepath.Base(filepath.Dir(directory)) == "src" {
 			*manifestPaths = append(*manifestPaths, currentPath)
 		}
+	default:
+		if isDockerfileName(baseName) {
+			markersFor(markers, directory).dockerfile = true
+		} else if isComposeFileName(baseName) {
+			markersFor(markers, directory).composeFile = true
+		}
+	}
+}
+
+func isDockerfileName(name string) bool {
+	name = strings.ToLower(name)
+	return name == "dockerfile" || strings.HasPrefix(name, "dockerfile.")
+}
+
+func isComposeFileName(name string) bool {
+	switch strings.ToLower(name) {
+	case "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -410,11 +433,18 @@ func (discoverer *Discoverer) buildProjects(
 ) ([]domain.Project, []domain.Diagnostic) {
 	flutterRoots := make(map[string]domain.ProjectKind)
 	androidRoots := make(map[string]struct{})
+	dockerRoots := make(map[string]struct{})
 	diagnostics := make([]domain.Diagnostic, 0)
 
 	for directory, marker := range markers {
 		if marker.pubspec && (marker.flutterMetadata || marker.fvmConfig || marker.androidDirectory) {
 			flutterRoots[directory] = domain.ProjectFlutter
+		}
+	}
+
+	for directory, marker := range markers {
+		if marker.dockerfile || marker.composeFile {
+			dockerRoots[directory] = struct{}{}
 		}
 	}
 
@@ -442,7 +472,7 @@ func (discoverer *Discoverer) buildProjects(
 		}
 	}
 
-	projects := make([]domain.Project, 0, len(flutterRoots)+len(androidRoots))
+	projects := make([]domain.Project, 0, len(flutterRoots)+len(androidRoots)+len(dockerRoots))
 	for directory, kind := range flutterRoots {
 		project, diagnostic := discoverer.newProject(directory, kind)
 		projects = append(projects, project)
@@ -461,10 +491,63 @@ func (discoverer *Discoverer) buildProjects(
 		}
 	}
 
+	// A Docker marker augments an already recognized Flutter or Android
+	// project. Only markers outside those roots create Docker-only projects.
+	existingRoots := make([]string, 0, len(flutterRoots)+len(androidRoots))
+	for directory := range flutterRoots {
+		existingRoots = append(existingRoots, directory)
+	}
+	for directory := range androidRoots {
+		existingRoots = append(existingRoots, directory)
+	}
+	dockerCandidates := make([]string, 0, len(dockerRoots))
+	for directory := range dockerRoots {
+		dockerCandidates = append(dockerCandidates, directory)
+	}
+	sort.Slice(dockerCandidates, func(left, right int) bool {
+		leftDepth := pathDepth(dockerCandidates[left])
+		rightDepth := pathDepth(dockerCandidates[right])
+		if leftDepth != rightDepth {
+			return leftDepth < rightDepth
+		}
+		return dockerCandidates[left] < dockerCandidates[right]
+	})
+	acceptedDockerRoots := []string{}
+	for _, directory := range dockerCandidates {
+		if coveredByAny(existingRoots, directory) {
+			continue
+		}
+		coveredByComposeRoot := false
+		for _, accepted := range acceptedDockerRoots {
+			if isWithin(accepted, directory) && markers[accepted].composeFile {
+				coveredByComposeRoot = true
+				break
+			}
+		}
+		if coveredByComposeRoot {
+			continue
+		}
+		project, diagnostic := discoverer.newProject(directory, domain.ProjectDocker)
+		projects = append(projects, project)
+		acceptedDockerRoots = append(acceptedDockerRoots, directory)
+		if diagnostic != nil {
+			diagnostics = append(diagnostics, *diagnostic)
+		}
+	}
+
 	sort.Slice(projects, func(left, right int) bool {
 		return projects[left].Path < projects[right].Path
 	})
 	return projects, diagnostics
+}
+
+func coveredByAny(roots []string, candidate string) bool {
+	for _, root := range roots {
+		if isWithin(root, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 func (discoverer *Discoverer) newProject(directory string, kind domain.ProjectKind) (domain.Project, *domain.Diagnostic) {

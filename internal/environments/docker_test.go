@@ -50,6 +50,9 @@ FROM eclipse-temurin:21-jre-alpine
 	if result.Stats.FilesRead != 1 {
 		t.Fatalf("expected one Dockerfile read, got %#v", result.Stats)
 	}
+	if !result.Complete {
+		t.Fatalf("static Dockerfile analysis should be complete: %#v", result.Diagnostics)
+	}
 }
 
 func TestDockerJDKMismatchStaysUnknown(t *testing.T) {
@@ -75,6 +78,73 @@ func TestDynamicDockerImageIsDiagnosedWithoutInventingRelation(t *testing.T) {
 	}
 	if !hasDockerDiagnostic(result.Diagnostics, "DOCKER_IMAGE_DYNAMIC") {
 		t.Fatalf("expected dynamic-image diagnostic: %#v", result.Diagnostics)
+	}
+	if result.Complete {
+		t.Fatal("dynamic image must make Docker reference coverage incomplete")
+	}
+}
+
+func TestDockerfileAndComposeImagesBecomeDeduplicatedRequirements(t *testing.T) {
+	root := t.TempDir()
+	writeDockerFixture(t, filepath.Join(root, "Dockerfile"), `FROM node:24 AS builder
+FROM builder AS packaged
+FROM alpine:3.22
+`)
+	writeDockerFixture(t, filepath.Join(root, "compose.yaml"), `services:
+  web:
+    image: "node:24" # same declaration as the Dockerfile
+  database:
+    image: postgres:16
+  generated:
+    image: ${APP_IMAGE:-example/app:latest}
+`)
+	writeDockerFixture(t, filepath.Join(root, "vendor", "dependency", "Dockerfile"), "FROM php:8.4\n")
+	project := domain.Project{ID: "project-stack", Path: root, Kind: domain.ProjectDocker, Requirements: []domain.Requirement{}, Warnings: []string{}}
+
+	result := New(OSFileSystem{}).AnalyzeProjects(context.Background(), []domain.Project{project}, Config{})
+	if len(result.Projects) != 1 || len(result.Projects[0].Requirements) != 3 {
+		t.Fatalf("expected node, alpine and postgres requirements: %#v", result.Projects)
+	}
+	constraints := map[string]int{}
+	for _, requirement := range result.Projects[0].Requirements {
+		if requirement.Ecosystem != "docker" || requirement.Component != "image" ||
+			requirement.Confidence != domain.RequiredExplicitly || requirement.VersionConstraint == nil {
+			t.Fatalf("unexpected Docker image requirement: %#v", requirement)
+		}
+		constraints[*requirement.VersionConstraint] = len(requirement.Evidence)
+	}
+	if constraints["node:24"] != 2 || constraints["alpine:3.22"] != 1 || constraints["postgres:16"] != 1 {
+		t.Fatalf("unexpected declarations or evidence counts: %#v", constraints)
+	}
+	if _, internalStage := constraints["builder"]; internalStage {
+		t.Fatal("a multi-stage alias must not become an external image requirement")
+	}
+	if !hasDockerDiagnostic(result.Diagnostics, "DOCKER_IMAGE_DYNAMIC") {
+		t.Fatalf("dynamic Compose image should remain diagnosed: %#v", result.Diagnostics)
+	}
+	if result.Stats.FilesRead != 2 {
+		t.Fatalf("expected both declaration files to be read: %#v", result.Stats)
+	}
+	if result.Complete {
+		t.Fatal("dynamic Compose image must make Docker reference coverage incomplete")
+	}
+}
+
+func TestComposeParserIgnoresNestedImageKeysAndReportsInlineMappings(t *testing.T) {
+	project := domain.Project{ID: "project-stack", Path: "/work/stack", Kind: domain.ProjectDocker}
+	declarations, diagnostics := parseComposeFile(project, "/work/stack/compose.yml", []byte(`services:
+  app:
+    build:
+      args:
+        image: must-not-match
+    image: ghcr.io/example/app:1.2.3
+  inline: { image: nginx:latest }
+`))
+	if len(declarations) != 1 || declarations[0].image != "ghcr.io/example/app:1.2.3" {
+		t.Fatalf("unexpected Compose declarations: %#v", declarations)
+	}
+	if !hasDockerDiagnostic(diagnostics, "DOCKER_COMPOSE_STRUCTURE_UNSUPPORTED") {
+		t.Fatalf("inline service mapping should be reported: %#v", diagnostics)
 	}
 }
 

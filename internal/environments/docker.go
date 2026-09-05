@@ -4,6 +4,8 @@ package environments
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -36,6 +38,7 @@ var excludedDirectories = map[string]struct{}{
 	"Pods":         {},
 	"build":        {},
 	"node_modules": {},
+	"vendor":       {},
 }
 
 type Limits struct {
@@ -56,9 +59,12 @@ type Stats struct {
 }
 
 type Result struct {
-	Relations   []domain.Relation
-	Diagnostics []domain.Diagnostic
-	Stats       Stats
+	Projects     []domain.Project
+	Requirements []domain.Requirement
+	Relations    []domain.Relation
+	Diagnostics  []domain.Diagnostic
+	Stats        Stats
+	Complete     bool
 }
 
 type FileSystem interface {
@@ -80,7 +86,12 @@ func (analyzer *Analyzer) AnalyzeProjects(
 	projects []domain.Project,
 	config Config,
 ) Result {
-	result := Result{Relations: []domain.Relation{}, Diagnostics: []domain.Diagnostic{}}
+	result := Result{
+		Projects:    cloneProjects(projects),
+		Relations:   []domain.Relation{},
+		Diagnostics: []domain.Diagnostic{},
+		Complete:    true,
+	}
 	if analyzer == nil || analyzer.fileSystem == nil {
 		result.Diagnostics = append(result.Diagnostics, diagnostic(
 			"DOCKER_ANALYZER_FILESYSTEM_UNAVAILABLE",
@@ -89,11 +100,12 @@ func (analyzer *Analyzer) AnalyzeProjects(
 			"filesystem adapter is required",
 			"",
 		))
+		result.Complete = false
 		return result
 	}
 
 	limits := normalizeLimits(config.Limits)
-	for _, project := range projects {
+	for index, project := range projects {
 		if ctx.Err() != nil {
 			result.Diagnostics = append(result.Diagnostics, diagnostic(
 				"DOCKER_ANALYZER_CANCELLED",
@@ -105,6 +117,10 @@ func (analyzer *Analyzer) AnalyzeProjects(
 			break
 		}
 		projectResult := analyzer.analyzeProject(ctx, project, limits)
+		result.Projects[index].Requirements = append(
+			result.Projects[index].Requirements,
+			projectResult.Requirements...,
+		)
 		result.Relations = append(result.Relations, projectResult.Relations...)
 		result.Diagnostics = append(result.Diagnostics, projectResult.Diagnostics...)
 		result.Stats.EntriesVisited += projectResult.Stats.EntriesVisited
@@ -113,6 +129,7 @@ func (analyzer *Analyzer) AnalyzeProjects(
 	}
 	sortRelations(result.Relations)
 	sortDiagnostics(result.Diagnostics)
+	result.Complete = dockerAnalysisComplete(result.Diagnostics)
 	return result
 }
 
@@ -121,12 +138,21 @@ type jdkProvider struct {
 	evidence domain.Evidence
 }
 
+type imageDeclaration struct {
+	image    string
+	evidence domain.Evidence
+}
+
 func (analyzer *Analyzer) analyzeProject(
 	ctx context.Context,
 	project domain.Project,
 	limits Limits,
 ) Result {
-	result := Result{Relations: []domain.Relation{}, Diagnostics: []domain.Diagnostic{}}
+	result := Result{
+		Requirements: []domain.Requirement{},
+		Relations:    []domain.Relation{},
+		Diagnostics:  []domain.Diagnostic{},
+	}
 	root, err := filepath.Abs(project.Path)
 	if err != nil {
 		result.Diagnostics = append(result.Diagnostics, diagnostic(
@@ -152,6 +178,7 @@ func (analyzer *Analyzer) analyzeProject(
 	}
 
 	providers := []jdkProvider{}
+	declarations := []imageDeclaration{}
 	err = analyzer.fileSystem.WalkDir(root, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return errStopDockerAnalysis
@@ -200,7 +227,7 @@ func (analyzer *Analyzer) analyzeProject(
 		if entry.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
-		if entry.IsDir() || !isDockerfile(entry.Name()) {
+		if entry.IsDir() || (!isDockerfile(entry.Name()) && !isComposeFile(entry.Name())) {
 			return nil
 		}
 		if result.Stats.FilesRead >= limits.MaxFiles {
@@ -208,7 +235,7 @@ func (analyzer *Analyzer) analyzeProject(
 				"DOCKER_ANALYZER_MAX_FILES_REACHED",
 				domain.SeverityWarning,
 				project.ID,
-				fmt.Sprintf("maximum Dockerfile budget %d reached", limits.MaxFiles),
+				fmt.Sprintf("maximum Docker declaration file budget %d reached", limits.MaxFiles),
 				root,
 			))
 			return errStopDockerAnalysis
@@ -221,8 +248,16 @@ func (analyzer *Analyzer) analyzeProject(
 		}
 		result.Stats.FilesRead++
 		result.Stats.BytesRead += int64(len(content))
-		fileProviders, fileDiagnostics := parseDockerfile(project, currentPath, content)
+		fileProviders := []jdkProvider{}
+		fileDeclarations := []imageDeclaration{}
+		fileDiagnostics := []domain.Diagnostic{}
+		if isDockerfile(entry.Name()) {
+			fileProviders, fileDeclarations, fileDiagnostics = parseDockerfile(project, currentPath, content)
+		} else {
+			fileDeclarations, fileDiagnostics = parseComposeFile(project, currentPath, content)
+		}
 		providers = append(providers, fileProviders...)
+		declarations = append(declarations, fileDeclarations...)
 		result.Diagnostics = append(result.Diagnostics, fileDiagnostics...)
 		return nil
 	})
@@ -245,6 +280,7 @@ func (analyzer *Analyzer) analyzeProject(
 		))
 	}
 	result.Relations = dockerJDKRelations(project, providers)
+	result.Requirements = dockerImageRequirements(project, declarations)
 	return result
 }
 
@@ -255,7 +291,7 @@ func (analyzer *Analyzer) readBounded(path string, maxBytes int64, scope string)
 			"DOCKERFILE_READ_FAILED",
 			domain.SeverityWarning,
 			scope,
-			"cannot read Dockerfile",
+			"cannot read Docker declaration file",
 			path,
 		)
 		return nil, &item
@@ -267,7 +303,7 @@ func (analyzer *Analyzer) readBounded(path string, maxBytes int64, scope string)
 			"DOCKERFILE_READ_FAILED",
 			domain.SeverityWarning,
 			scope,
-			"cannot read Dockerfile",
+			"cannot read Docker declaration file",
 			path,
 		)
 		return nil, &item
@@ -277,7 +313,7 @@ func (analyzer *Analyzer) readBounded(path string, maxBytes int64, scope string)
 			"DOCKERFILE_TOO_LARGE",
 			domain.SeverityWarning,
 			scope,
-			fmt.Sprintf("Dockerfile exceeds the %d byte analysis limit", maxBytes),
+			fmt.Sprintf("Docker declaration file exceeds the %d byte analysis limit", maxBytes),
 			path,
 		)
 		return nil, &item
@@ -289,11 +325,13 @@ func parseDockerfile(
 	project domain.Project,
 	filePath string,
 	content []byte,
-) ([]jdkProvider, []domain.Diagnostic) {
+) ([]jdkProvider, []imageDeclaration, []domain.Diagnostic) {
 	providers := []jdkProvider{}
+	declarations := []imageDeclaration{}
 	diagnostics := []domain.Diagnostic{}
+	stageAliases := map[string]struct{}{}
 	for index, rawLine := range strings.Split(string(content), "\n") {
-		image, found := dockerFromImage(rawLine)
+		image, alias, found := dockerFromDirective(rawLine)
 		if !found {
 			continue
 		}
@@ -305,10 +343,42 @@ func parseDockerfile(
 				"dynamic Docker base image was not interpreted",
 				filePath,
 			))
+			if alias != "" {
+				stageAliases[strings.ToLower(alias)] = struct{}{}
+			}
 			continue
 		}
+		if strings.EqualFold(image, "scratch") {
+			if alias != "" {
+				stageAliases[strings.ToLower(alias)] = struct{}{}
+			}
+			continue
+		}
+		if _, internalStage := stageAliases[strings.ToLower(image)]; internalStage {
+			if alias != "" {
+				stageAliases[strings.ToLower(alias)] = struct{}{}
+			}
+			continue
+		}
+
+		line := index + 1
+		key := "FROM"
+		observed := boundedObservedValue(image)
+		pathCopy := filePath
+		evidence := domain.Evidence{
+			SourceType:    "file",
+			FilePath:      &pathCopy,
+			Key:           &key,
+			LineHint:      &line,
+			ObservedValue: &observed,
+			RuleID:        "docker.from.image.v1",
+		}
+		declarations = append(declarations, imageDeclaration{image: image, evidence: evidence})
 		feature, isJDK, versionKnown := dockerImageJDKFeature(image)
 		if !isJDK {
+			if alias != "" {
+				stageAliases[strings.ToLower(alias)] = struct{}{}
+			}
 			continue
 		}
 		if !versionKnown {
@@ -319,25 +389,254 @@ func parseDockerfile(
 				"recognized a Docker JDK image but could not extract a static feature version",
 				filePath,
 			))
+			if alias != "" {
+				stageAliases[strings.ToLower(alias)] = struct{}{}
+			}
+			continue
+		}
+		evidence.RuleID = "docker.from.jdk.v1"
+		providers = append(providers, jdkProvider{
+			feature:  feature,
+			evidence: evidence,
+		})
+		if alias != "" {
+			stageAliases[strings.ToLower(alias)] = struct{}{}
+		}
+	}
+	return providers, declarations, diagnostics
+}
+
+func parseComposeFile(
+	project domain.Project,
+	filePath string,
+	content []byte,
+) ([]imageDeclaration, []domain.Diagnostic) {
+	declarations := []imageDeclaration{}
+	diagnostics := []domain.Diagnostic{}
+	servicesIndent := -1
+	serviceIndent := -1
+	attributeIndent := -1
+	unsupportedStructureReported := false
+
+	for index, rawLine := range strings.Split(string(content), "\n") {
+		lineWithoutComment := stripYAMLComment(rawLine)
+		if strings.TrimSpace(lineWithoutComment) == "" {
+			continue
+		}
+		indent, tabs := yamlIndent(lineWithoutComment)
+		if tabs {
+			if !unsupportedStructureReported {
+				diagnostics = append(diagnostics, diagnostic(
+					"DOCKER_COMPOSE_STRUCTURE_UNSUPPORTED",
+					domain.SeverityInfo,
+					project.ID,
+					"Compose indentation with tabs was not interpreted",
+					filePath,
+				))
+				unsupportedStructureReported = true
+			}
+			continue
+		}
+		key, value, mapping := yamlMappingLine(strings.TrimSpace(lineWithoutComment))
+		if !mapping {
+			continue
+		}
+
+		if servicesIndent < 0 {
+			if indent == 0 && key == "services" {
+				if strings.TrimSpace(value) != "" {
+					diagnostics = append(diagnostics, diagnostic(
+						"DOCKER_COMPOSE_STRUCTURE_UNSUPPORTED",
+						domain.SeverityInfo,
+						project.ID,
+						"inline Compose services were not interpreted",
+						filePath,
+					))
+					return declarations, diagnostics
+				}
+				servicesIndent = indent
+			}
+			continue
+		}
+
+		if indent <= servicesIndent {
+			servicesIndent = -1
+			serviceIndent = -1
+			attributeIndent = -1
+			continue
+		}
+		if serviceIndent < 0 || indent == serviceIndent {
+			if serviceIndent < 0 {
+				serviceIndent = indent
+			}
+			if indent == serviceIndent {
+				attributeIndent = -1
+				if strings.TrimSpace(value) != "" && !unsupportedStructureReported {
+					diagnostics = append(diagnostics, diagnostic(
+						"DOCKER_COMPOSE_STRUCTURE_UNSUPPORTED",
+						domain.SeverityInfo,
+						project.ID,
+						"inline Compose service mappings were not interpreted",
+						filePath,
+					))
+					unsupportedStructureReported = true
+				}
+				continue
+			}
+		}
+		if indent < serviceIndent {
+			continue
+		}
+		if attributeIndent < 0 {
+			attributeIndent = indent
+		}
+		if indent != attributeIndent || key != "image" {
+			continue
+		}
+
+		image, scalar := yamlScalar(value)
+		if !scalar || image == "" || strings.Contains(image, "$") || strings.HasPrefix(image, "*") {
+			diagnostics = append(diagnostics, diagnostic(
+				"DOCKER_IMAGE_DYNAMIC",
+				domain.SeverityInfo,
+				project.ID,
+				"dynamic or non-scalar Compose image was not interpreted",
+				filePath,
+			))
 			continue
 		}
 		line := index + 1
-		key := "FROM"
-		observed := boundedObservedValue(image)
+		keyCopy := "services.*.image"
 		pathCopy := filePath
-		providers = append(providers, jdkProvider{
-			feature: feature,
+		observed := boundedObservedValue(image)
+		declarations = append(declarations, imageDeclaration{
+			image: image,
 			evidence: domain.Evidence{
 				SourceType:    "file",
 				FilePath:      &pathCopy,
-				Key:           &key,
+				Key:           &keyCopy,
 				LineHint:      &line,
 				ObservedValue: &observed,
-				RuleID:        "docker.from.jdk.v1",
+				RuleID:        "docker.compose.image.v1",
 			},
 		})
 	}
-	return providers, diagnostics
+	return declarations, diagnostics
+}
+
+func dockerImageRequirements(project domain.Project, declarations []imageDeclaration) []domain.Requirement {
+	byImage := map[string]*domain.Requirement{}
+	for _, declaration := range declarations {
+		image := strings.TrimSpace(declaration.image)
+		if image == "" {
+			continue
+		}
+		requirement := byImage[image]
+		if requirement == nil {
+			digest := sha256.Sum256([]byte(project.ID + "\x00docker\x00image\x00" + image))
+			constraint := image
+			requirement = &domain.Requirement{
+				ID:                "requirement-" + hex.EncodeToString(digest[:8]),
+				Ecosystem:         "docker",
+				Component:         "image",
+				VersionConstraint: &constraint,
+				Confidence:        domain.RequiredExplicitly,
+				Evidence:          []domain.Evidence{},
+				Warnings:          []string{},
+			}
+			byImage[image] = requirement
+		}
+		requirement.Evidence = append(requirement.Evidence, declaration.evidence)
+	}
+	images := make([]string, 0, len(byImage))
+	for image := range byImage {
+		images = append(images, image)
+	}
+	sort.Strings(images)
+	result := make([]domain.Requirement, 0, len(images))
+	for _, image := range images {
+		result = append(result, *byImage[image])
+	}
+	return result
+}
+
+func yamlIndent(line string) (int, bool) {
+	indent := 0
+	for _, character := range line {
+		switch character {
+		case ' ':
+			indent++
+		case '\t':
+			return indent, true
+		default:
+			return indent, false
+		}
+	}
+	return indent, false
+}
+
+func yamlMappingLine(line string) (string, string, bool) {
+	quoted := rune(0)
+	for index, character := range line {
+		if quoted != 0 {
+			if character == quoted {
+				quoted = 0
+			}
+			continue
+		}
+		if character == '\'' || character == '"' {
+			quoted = character
+			continue
+		}
+		if character == ':' {
+			key, ok := yamlScalar(strings.TrimSpace(line[:index]))
+			return key, strings.TrimSpace(line[index+1:]), ok && key != ""
+		}
+	}
+	return "", "", false
+}
+
+func stripYAMLComment(line string) string {
+	quoted := rune(0)
+	for index, character := range line {
+		if quoted != 0 {
+			if character == quoted {
+				quoted = 0
+			}
+			continue
+		}
+		if character == '\'' || character == '"' {
+			quoted = character
+			continue
+		}
+		if character == '#' && (index == 0 || line[index-1] == ' ' || line[index-1] == '\t') {
+			return strings.TrimRight(line[:index], " \t")
+		}
+	}
+	return line
+}
+
+func yamlScalar(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", true
+	}
+	if strings.HasPrefix(value, "[") || strings.HasPrefix(value, "{") ||
+		strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") || strings.HasPrefix(value, "!") ||
+		strings.ContainsAny(value, "\r\n") {
+		return "", false
+	}
+	if value[0] == '"' {
+		unquoted, err := strconv.Unquote(value)
+		return unquoted, err == nil
+	}
+	if value[0] == '\'' {
+		if len(value) < 2 || value[len(value)-1] != '\'' {
+			return "", false
+		}
+		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), true
+	}
+	return value, true
 }
 
 func dockerJDKRelations(project domain.Project, providers []jdkProvider) []domain.Relation {
@@ -401,18 +700,28 @@ func dockerJDKRelations(project domain.Project, providers []jdkProvider) []domai
 }
 
 func dockerFromImage(line string) (string, bool) {
+	image, _, found := dockerFromDirective(line)
+	return image, found
+}
+
+func dockerFromDirective(line string) (string, string, bool) {
 	fields := strings.Fields(line)
 	if len(fields) < 2 || !strings.EqualFold(fields[0], "FROM") {
-		return "", false
+		return "", "", false
 	}
 	index := 1
 	for index < len(fields) && strings.HasPrefix(fields[index], "--") {
 		index++
 	}
 	if index >= len(fields) || strings.HasPrefix(fields[index], "#") {
-		return "", false
+		return "", "", false
 	}
-	return fields[index], true
+	image := fields[index]
+	alias := ""
+	if index+2 < len(fields) && strings.EqualFold(fields[index+1], "AS") {
+		alias = fields[index+2]
+	}
+	return image, alias, true
 }
 
 func dockerImageJDKFeature(image string) (feature int, isJDK bool, versionKnown bool) {
@@ -515,6 +824,15 @@ func isDockerfile(name string) bool {
 	return name == "dockerfile" || strings.HasPrefix(name, "dockerfile.")
 }
 
+func isComposeFile(name string) bool {
+	switch strings.ToLower(name) {
+	case "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
+		return true
+	default:
+		return false
+	}
+}
+
 func pathDepth(relative string) int {
 	if relative == "." {
 		return 0
@@ -536,6 +854,29 @@ func normalizeLimits(limits Limits) Limits {
 		limits.MaxFileBytes = DefaultMaxFileBytes
 	}
 	return limits
+}
+
+func dockerAnalysisComplete(diagnostics []domain.Diagnostic) bool {
+	for _, item := range diagnostics {
+		if item.Severity == domain.SeverityWarning || item.Severity == domain.SeverityError {
+			return false
+		}
+		switch item.Code {
+		case "DOCKER_IMAGE_DYNAMIC", "DOCKER_COMPOSE_STRUCTURE_UNSUPPORTED":
+			return false
+		}
+	}
+	return true
+}
+
+func cloneProjects(projects []domain.Project) []domain.Project {
+	result := make([]domain.Project, len(projects))
+	for index, project := range projects {
+		result[index] = project
+		result[index].Requirements = append([]domain.Requirement(nil), project.Requirements...)
+		result[index].Warnings = append([]string(nil), project.Warnings...)
+	}
+	return result
 }
 
 func diagnostic(

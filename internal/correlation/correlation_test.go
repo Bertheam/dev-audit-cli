@@ -90,6 +90,71 @@ func TestMissingRequiresCompleteInventoryScope(t *testing.T) {
 	}
 }
 
+func TestCorrelateDockerImageAgainstDaemonReferences(t *testing.T) {
+	project := domain.Project{
+		ID:   "project-stack",
+		Path: "/work/stack",
+		Kind: domain.ProjectDocker,
+		Requirements: []domain.Requirement{
+			requirement("postgres", "docker", "image", "docker.io/library/postgres:16", domain.RequiredExplicitly),
+			requirement("nginx", "docker", "image", "nginx", domain.RequiredExplicitly),
+		},
+	}
+	postgres := resourceWithoutVersion("postgres-image", "docker", "docker_image")
+	postgres.Metadata = []domain.MetadataEntry{
+		{Key: "reference", Value: "postgres:latest"},
+		{Key: "reference", Value: "postgres:16"},
+	}
+
+	result := Correlate([]domain.Project{project}, []domain.InstalledResource{postgres}, Coverage{
+		ProjectDiscoveryComplete:    true,
+		RequirementAnalysisComplete: true,
+		CompleteInventoryScopes: []InventoryScope{
+			{Ecosystem: "docker", Component: "docker_image"},
+		},
+	})
+	if len(result.Relations) != 2 {
+		t.Fatalf("expected two Docker daemon relations: %#v", result.Relations)
+	}
+	statuses := map[string]domain.Relation{}
+	for _, relation := range result.Relations {
+		statuses[relation.RequirementID] = relation
+		if relation.Environment != domain.EnvironmentDockerDaemon {
+			t.Fatalf("Docker image relation environment = %s", relation.Environment)
+		}
+	}
+	if statuses["postgres"].MatchStatus != domain.Matched || statuses["postgres"].ResourceID == nil {
+		t.Fatalf("Docker Hub aliases should match the local image: %#v", statuses["postgres"])
+	}
+	if statuses["nginx"].MatchStatus != domain.Missing {
+		t.Fatalf("complete daemon image inventory should prove nginx missing: %#v", statuses["nginx"])
+	}
+	if result.Resources[0].ReferenceStatus != domain.Referenced {
+		t.Fatalf("matched Docker image should be referenced: %#v", result.Resources[0])
+	}
+}
+
+func TestNormalizeDockerImageReference(t *testing.T) {
+	tests := map[string]string{
+		"nginx":                             "docker.io/library/nginx:latest",
+		"postgres:16":                       "docker.io/library/postgres:16",
+		"library/postgres:16":               "docker.io/library/postgres:16",
+		"index.docker.io/library/nginx:1.2": "docker.io/library/nginx:1.2",
+		"docker.io/nginx":                   "docker.io/library/nginx:latest",
+		"ghcr.io/Example/App:Release":       "ghcr.io/example/app:Release",
+		"localhost:5000/team/app":           "localhost:5000/team/app:latest",
+	}
+	for input, want := range tests {
+		got, ok := normalizeDockerImageReference(input)
+		if !ok || got != want {
+			t.Errorf("normalizeDockerImageReference(%q) = %q, %v; want %q", input, got, ok, want)
+		}
+	}
+	if _, ok := normalizeDockerImageReference("${IMAGE}"); ok {
+		t.Fatal("dynamic image reference must be rejected")
+	}
+}
+
 func TestUnknownVersionsAndAmbiguityProtectCandidateResources(t *testing.T) {
 	tests := []struct {
 		name        string

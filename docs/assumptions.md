@@ -25,8 +25,6 @@
 4. Durée maximale imposée par la future CLI à chaque adaptateur.
 5. Sous-ensemble de syntaxe Gradle officiellement pris en charge.
 6. Politique de compatibilité macOS du binaire distribué.
-7. Sous-ensemble d'images et de champs Docker Compose à corréler aux ressources
-   du daemon.
 
 ## Clarifications appliquées
 
@@ -40,10 +38,15 @@
   `PATH`, les emplacements usuels et une recherche profonde bornée.
 - Une couverture automatique reste heuristique : elle autorise les
   correspondances positives, jamais `MISSING` ni `NO_REFERENCE_FOUND`.
-- Les relations portent `HOST` ou `DOCKER`. Un champ absent dans un ancien
-  rapport JSON v1 signifie `HOST`.
+- Les relations portent `HOST`, `DOCKER` ou `DOCKER_DAEMON`. Un champ absent
+  dans un ancien rapport JSON v1 signifie `HOST`.
 - `DOCKER:MATCHED` décrit un `FROM` statique compatible ; il ne prouve ni une
   image locale ni un conteneur actif et n'est jamais une ressource installée.
+- Les quatre noms Compose standards sont reconnus. Seules les valeurs scalaires
+  statiques de `services.*.image` et les images externes statiques de `FROM`
+  deviennent des exigences. Les alias de stage et `scratch` sont ignorés.
+- `DOCKER_DAEMON` relie une exigence d'image à l'inventaire local global. Une
+  absence ne devient `MISSING` que si la liste d'images a été lue complètement.
 - Un diagnostic `WARNING` ou `ERROR` rend incomplète la couverture de l'étape ou
   de la famille d'inventaire concernée ; cette règle privilégie les faux
   inconnus aux fausses certitudes.

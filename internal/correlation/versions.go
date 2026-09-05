@@ -36,9 +36,109 @@ func compileEvaluator(
 		return compileDartEvaluator(constraint)
 	case strategyJDKFeature:
 		return compileJDKEvaluator(constraint)
+	case strategyDockerImage:
+		return compileDockerImageEvaluator(constraint)
 	default:
 		return nil, false
 	}
+}
+
+func compileDockerImageEvaluator(constraint string) (func(domain.InstalledResource) candidateEvaluation, bool) {
+	wanted, valid := normalizeDockerImageReference(constraint)
+	if !valid {
+		return nil, false
+	}
+	wantedRepository, wantedDigest, digestReference := strings.Cut(wanted, "@")
+	return func(resource domain.InstalledResource) candidateEvaluation {
+		references := metadataValues(resource.Metadata, "reference")
+		if !digestReference {
+			for _, reference := range references {
+				if normalized, ok := normalizeDockerImageReference(reference); ok && normalized == wanted {
+					return candidateMatch
+				}
+			}
+			if len(references) == 0 && resource.Version != nil {
+				if normalized, ok := normalizeDockerImageReference(*resource.Version); ok && normalized == wanted {
+					return candidateMatch
+				}
+			}
+			return candidateNoMatch
+		}
+
+		digestMatched := false
+		for _, digest := range metadataValues(resource.Metadata, "digest") {
+			if strings.EqualFold(strings.TrimSpace(digest), wantedDigest) {
+				digestMatched = true
+				break
+			}
+		}
+		if !digestMatched {
+			return candidateNoMatch
+		}
+		for _, reference := range references {
+			normalized, ok := normalizeDockerImageReference(reference)
+			if !ok {
+				continue
+			}
+			repository := strings.SplitN(normalized, "@", 2)[0]
+			if colon := strings.LastIndex(repository, ":"); colon > strings.LastIndex(repository, "/") {
+				repository = repository[:colon]
+			}
+			if repository == wantedRepository {
+				return candidateMatch
+			}
+		}
+		return candidateNoMatch
+	}, true
+}
+
+func normalizeDockerImageReference(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.ContainsAny(value, " \t\r\n$") {
+		return "", false
+	}
+	name := value
+	digest := ""
+	if at := strings.LastIndex(name, "@"); at >= 0 {
+		digest = name[at+1:]
+		name = name[:at]
+		if name == "" || digest == "" || !strings.Contains(digest, ":") {
+			return "", false
+		}
+	}
+	slash := strings.LastIndex(name, "/")
+	colon := strings.LastIndex(name, ":")
+	tag := ""
+	if colon > slash {
+		tag = name[colon+1:]
+		name = name[:colon]
+		if tag == "" {
+			return "", false
+		}
+	}
+	if name == "" {
+		return "", false
+	}
+	parts := strings.Split(name, "/")
+	first := parts[0]
+	if len(parts) == 1 {
+		name = "docker.io/library/" + name
+	} else if !strings.Contains(first, ".") && !strings.Contains(first, ":") && first != "localhost" {
+		name = "docker.io/" + name
+	} else if first == "index.docker.io" {
+		name = "docker.io/" + strings.Join(parts[1:], "/")
+	}
+	if strings.HasPrefix(name, "docker.io/") && strings.Count(name, "/") == 1 {
+		name = "docker.io/library/" + strings.TrimPrefix(name, "docker.io/")
+	}
+	name = strings.ToLower(name)
+	if digest != "" {
+		return name + "@" + strings.ToLower(digest), true
+	}
+	if tag == "" {
+		tag = "latest"
+	}
+	return name + ":" + tag, true
 }
 
 func compileExactEvaluator(constraint string) (func(domain.InstalledResource) candidateEvaluation, bool) {
@@ -269,4 +369,14 @@ func metadataValue(metadata []domain.MetadataEntry, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func metadataValues(metadata []domain.MetadataEntry, key string) []string {
+	values := []string{}
+	for _, entry := range metadata {
+		if entry.Key == key {
+			values = append(values, entry.Value)
+		}
+	}
+	return values
 }

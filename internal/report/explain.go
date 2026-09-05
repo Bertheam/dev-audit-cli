@@ -47,11 +47,13 @@ func explainProject(document domain.ScanDocument, project domain.Project) []byte
 	fmt.Fprintf(&output, "  kind: %s\n", project.Kind)
 	fmt.Fprintf(&output, "  requirements (%d):\n", len(project.Requirements))
 	for _, requirement := range project.Requirements {
-		relation, _ := relationFor(document.Relations, project.ID, requirement.ID, domain.EnvironmentHost)
-		dockerRelation, dockerExists := relationFor(document.Relations, project.ID, requirement.ID, domain.EnvironmentDocker)
-		fmt.Fprintf(&output, "    - [HOST:%s", relation.MatchStatus)
-		if dockerExists {
-			fmt.Fprintf(&output, " DOCKER:%s", dockerRelation.MatchStatus)
+		relations := explanationRelationsForRequirement(document.Relations, project.ID, requirement.ID)
+		fmt.Fprintf(&output, "    - [")
+		for index, relation := range relations {
+			if index > 0 {
+				output.WriteByte(' ')
+			}
+			fmt.Fprintf(&output, "%s:%s", relationEnvironment(relation), relation.MatchStatus)
 		}
 		fmt.Fprintf(&output, "] %s %s/%s constraint=%s\n",
 			terminalValue(requirement.ID),
@@ -75,17 +77,17 @@ func explainRequirement(
 	fmt.Fprintf(&output, "  component: %s/%s\n", terminalValue(requirement.Ecosystem), terminalValue(requirement.Component))
 	fmt.Fprintf(&output, "  constraint: %s\n", optionalTerminalValue(requirement.VersionConstraint))
 	fmt.Fprintf(&output, "  confidence: %s\n", requirement.Confidence)
-	for _, environment := range []domain.ExecutionEnvironment{domain.EnvironmentHost, domain.EnvironmentDocker} {
+	foundRelation := false
+	for _, environment := range []domain.ExecutionEnvironment{
+		domain.EnvironmentHost,
+		domain.EnvironmentDocker,
+		domain.EnvironmentDockerDaemon,
+	} {
 		relation, exists := relationFor(document.Relations, project.ID, requirement.ID, environment)
-		if !exists && environment == domain.EnvironmentDocker {
-			continue
-		}
 		if !exists {
-			fmt.Fprintf(&output, "  %s match: UNKNOWN (relation absent from report)\n", environment)
-			appendWarnings(&output, requirement.Warnings, "  ")
-			appendEvidence(&output, requirement.Evidence, "  ")
 			continue
 		}
+		foundRelation = true
 		fmt.Fprintf(&output, "  %s match: %s\n", environment, relation.MatchStatus)
 		fmt.Fprintf(&output, "  %s rationale: %s\n", environment, terminalValue(relation.Rationale))
 		if relation.ResourceID != nil {
@@ -94,7 +96,36 @@ func explainRequirement(
 		appendWarnings(&output, relation.Warnings, "  ")
 		appendEvidence(&output, relation.Evidence, "  ")
 	}
+	if !foundRelation {
+		fmt.Fprintf(&output, "  HOST match: UNKNOWN (relation absent from report)\n")
+		appendWarnings(&output, requirement.Warnings, "  ")
+		appendEvidence(&output, requirement.Evidence, "  ")
+	}
 	return []byte(output.String())
+}
+
+func explanationRelationsForRequirement(
+	relations []domain.Relation,
+	projectID string,
+	requirementID string,
+) []domain.Relation {
+	result := []domain.Relation{}
+	for _, environment := range []domain.ExecutionEnvironment{
+		domain.EnvironmentHost,
+		domain.EnvironmentDocker,
+		domain.EnvironmentDockerDaemon,
+	} {
+		if relation, exists := relationFor(relations, projectID, requirementID, environment); exists {
+			result = append(result, relation)
+		}
+	}
+	if len(result) == 0 {
+		result = append(result, domain.Relation{
+			Environment: domain.EnvironmentHost,
+			MatchStatus: domain.MatchUnknown,
+		})
+	}
+	return result
 }
 
 func explainResource(document domain.ScanDocument, resource domain.InstalledResource) []byte {
