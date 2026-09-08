@@ -2,16 +2,22 @@ package report
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"dev-environment-auditor/internal/domain"
 )
 
-const safetyNotice = "NO_REFERENCE_FOUND means no reference was found in the analyzed coverage; it never means safe to delete. Classifications and potentially reclaimable space are observations, not cleanup recommendations."
-
-// RenderTerminal returns a deterministic, escape-safe human-readable report.
+// RenderTerminal returns a deterministic, escape-safe, plain-text report.
 func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
+	return RenderTerminalWithOptions(document, TerminalOptions{})
+}
+
+// RenderTerminalWithOptions returns a human-first terminal report while
+// preserving deterministic ordering and an ANSI-free plain mode.
+func RenderTerminalWithOptions(document domain.ScanDocument, options TerminalOptions) ([]byte, error) {
 	document, err := Normalize(document)
 	if err != nil {
 		return nil, err
@@ -28,19 +34,7 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 	for _, resource := range document.InstalledResources {
 		resources[resource.ID] = resource
 	}
-
-	var output strings.Builder
-	output.WriteString("◆ dev-audit // macOS development map\n")
-	fmt.Fprintf(&output, "  version=%s  mode=READ_ONLY\n", terminalValue(document.ToolVersion))
-	fmt.Fprintf(&output, "Scan window: %s -> %s\n", terminalValue(document.Scan.StartedAt), terminalValue(document.Scan.CompletedAt))
-	if document.Scan.ClassificationPolicy != nil {
-		fmt.Fprintf(&output, "Age policy: ANCIENNE after %d days using trusted last-use evidence only\n",
-			document.Scan.ClassificationPolicy.OldAfterDays)
-	}
-	fmt.Fprintf(&output, "Roots (%d):\n", len(document.Scan.Roots))
-	for _, root := range document.Scan.Roots {
-		fmt.Fprintf(&output, "  - %s\n", terminalValue(root))
-	}
+	style := newTerminalStyle(options)
 
 	requirementCount := 0
 	matchCounts := map[domain.ExecutionEnvironment]map[domain.MatchStatus]int{
@@ -62,56 +56,113 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 			classificationCounts[classification.Category]++
 		}
 	}
-	fmt.Fprintf(&output,
-		"Summary: %d projects, %d requirements, %d resources, %d diagnostics\n",
-		len(document.Projects), requirementCount, len(document.InstalledResources), len(document.Diagnostics),
+
+	var output strings.Builder
+	fmt.Fprintf(&output, "%s  %s\n", style.title("◆ dev-audit"), style.heading("scan"))
+	fmt.Fprintf(&output, "  %s · %s · %s\n",
+		style.success("READ ONLY"), style.muted(document.ToolVersion), style.muted(scanElapsed(document.Scan.StartedAt, document.Scan.CompletedAt)))
+	fmt.Fprintf(&output, "  Scope: %s", plural(len(document.Scan.Roots), "root", "roots"))
+	if document.Scan.ClassificationPolicy != nil {
+		fmt.Fprintf(&output, " · old after %d days", document.Scan.ClassificationPolicy.OldAfterDays)
+	}
+	output.WriteByte('\n')
+
+	output.WriteString(style.section("OVERVIEW"))
+	fmt.Fprintf(&output, "  %s · %s · %s · %s\n",
+		plural(len(document.Projects), "project", "projects"),
+		plural(requirementCount, "requirement", "requirements"),
+		plural(len(document.InstalledResources), "resource", "resources"),
+		plural(len(document.Diagnostics), "diagnostic", "diagnostics"),
 	)
-	writeRelationCounts(&output, domain.EnvironmentHost, matchCounts[domain.EnvironmentHost])
-	writeRelationCounts(&output, domain.EnvironmentDocker, matchCounts[domain.EnvironmentDocker])
-	writeRelationCounts(&output, domain.EnvironmentDockerDaemon, matchCounts[domain.EnvironmentDockerDaemon])
-	fmt.Fprintf(&output,
-		"Resources: REFERENCED=%d NO_REFERENCE_FOUND=%d UNKNOWN=%d\n",
-		resourceCounts[domain.Referenced], resourceCounts[domain.NoReferenceFound],
-		resourceCounts[domain.ReferenceUnknown],
+	totalMatches := sumMatchStatus(matchCounts, domain.Matched)
+	totalMissing := sumMatchStatus(matchCounts, domain.Missing)
+	totalAmbiguous := sumMatchStatus(matchCounts, domain.Ambiguous)
+	totalUnknown := sumMatchStatus(matchCounts, domain.MatchUnknown)
+	fmt.Fprintf(&output, "  Relations  %s %d matched  %s %d missing  %s %d ambiguous  %s %d unknown\n",
+		statusSymbol(style, "MATCHED"), totalMatches,
+		statusSymbol(style, "MISSING"), totalMissing,
+		statusSymbol(style, "AMBIGUOUS"), totalAmbiguous,
+		statusSymbol(style, "UNKNOWN"), totalUnknown,
 	)
-	fmt.Fprintf(&output,
-		"Classifications: UTILISEE=%d RECONSTRUCTIBLE=%d ANCIENNE=%d ORPHELINE_PROBABLE=%d SENSIBLE=%d INCONNUE=%d\n",
-		classificationCounts[domain.CategoryUsed], classificationCounts[domain.CategoryReconstructible],
-		classificationCounts[domain.CategoryOld], classificationCounts[domain.CategoryProbableOrphan],
-		classificationCounts[domain.CategorySensitive], classificationCounts[domain.CategoryUnknown],
+	fmt.Fprintf(&output, "  Resources  %s %d used  %s %d unknown  %s %d sensitive  %s %d probable orphan\n",
+		statusSymbol(style, "UTILISEE"), classificationCounts[domain.CategoryUsed],
+		statusSymbol(style, "INCONNUE"), classificationCounts[domain.CategoryUnknown],
+		statusSymbol(style, "SENSIBLE"), classificationCounts[domain.CategorySensitive],
+		statusSymbol(style, "ORPHELINE_PROBABLE"), classificationCounts[domain.CategoryProbableOrphan],
 	)
 
-	fmt.Fprintf(&output, "\nProjects (%d):\n", len(document.Projects))
-	if len(document.Projects) == 0 {
-		output.WriteString("  (none)\n")
+	output.WriteString(style.section("ENVIRONMENTS"))
+	writeEnvironmentSummary(&output, style, domain.EnvironmentHost, matchCounts[domain.EnvironmentHost])
+	writeEnvironmentSummary(&output, style, domain.EnvironmentDocker, matchCounts[domain.EnvironmentDocker])
+	writeEnvironmentSummary(&output, style, domain.EnvironmentDockerDaemon, matchCounts[domain.EnvironmentDockerDaemon])
+	fmt.Fprintf(&output, "  Resources        %s %d referenced  %s %d no reference  %s %d unknown\n",
+		statusSymbol(style, "REFERENCED"), resourceCounts[domain.Referenced],
+		statusSymbol(style, "ORPHELINE_PROBABLE"), resourceCounts[domain.NoReferenceFound],
+		statusSymbol(style, "UNKNOWN"), resourceCounts[domain.ReferenceUnknown])
+
+	if options.Verbose {
+		output.WriteString(style.section(fmt.Sprintf("ROOTS  %d", len(document.Scan.Roots))))
+		for _, root := range document.Scan.Roots {
+			fmt.Fprintf(&output, "  %s %s\n", style.muted("•"), terminalText(root))
+		}
 	}
-	for _, project := range document.Projects {
-		fmt.Fprintf(&output, "- [%s] %s (id=%s)\n", project.Kind, terminalValue(project.Path), terminalValue(project.ID))
+
+	output.WriteString(style.section(fmt.Sprintf("PROJECTS  %d", len(document.Projects))))
+	if len(document.Projects) == 0 {
+		fmt.Fprintf(&output, "  %s No projects found\n", style.muted("—"))
+	}
+	visibleProjects := len(document.Projects)
+	if !options.Verbose && visibleProjects > 12 {
+		visibleProjects = 12
+	}
+	for _, project := range document.Projects[:visibleProjects] {
+		matched, missing, ambiguous, unknown := projectRelationCounts(project, relations)
+		projectStatus := "MATCHED"
+		if missing > 0 {
+			projectStatus = "MISSING"
+		} else if ambiguous > 0 {
+			projectStatus = "AMBIGUOUS"
+		} else if unknown > 0 {
+			projectStatus = "UNKNOWN"
+		}
+		fmt.Fprintf(&output, "  %s %s\n", statusSymbol(style, projectStatus), terminalText(project.Path))
+		fmt.Fprintf(&output, "    %s · %s · %d matched · %d missing · %d unknown",
+			project.Kind, plural(len(project.Requirements), "requirement", "requirements"), matched, missing, unknown)
+		if ambiguous > 0 {
+			fmt.Fprintf(&output, " · %d ambiguous", ambiguous)
+		}
+		if options.Verbose {
+			fmt.Fprintf(&output, " · %s", style.muted(terminalText(project.ID)))
+		}
+		output.WriteByte('\n')
 		if len(project.Requirements) == 0 {
-			output.WriteString("    requirements: none observed\n")
+			continue
+		}
+		if !options.Verbose {
 			continue
 		}
 		for _, requirement := range project.Requirements {
 			requirementRelations := reportRelationsForRequirement(relations, project.ID, requirement.ID)
-			fmt.Fprintf(&output, "    - [")
+			fmt.Fprintf(&output, "    %s ", relationSetSymbol(style, requirementRelations))
 			for index, relation := range requirementRelations {
 				if index > 0 {
-					output.WriteByte(' ')
+					output.WriteString("  ")
 				}
 				fmt.Fprintf(&output, "%s:%s", relationEnvironment(relation), relation.MatchStatus)
 			}
-			fmt.Fprintf(&output, "] %s/%s constraint=%s confidence=%s",
-				terminalValue(requirement.Ecosystem),
-				terminalValue(requirement.Component),
-				optionalTerminalValue(requirement.VersionConstraint),
+			fmt.Fprintf(&output, " · %s/%s · %s · %s · %s",
+				terminalText(requirement.Ecosystem),
+				terminalText(requirement.Component),
+				optionalTerminalText(requirement.VersionConstraint),
 				requirement.Confidence,
+				style.muted(terminalText(requirement.ID)),
 			)
 			for _, relation := range requirementRelations {
 				if relation.ResourceID != nil {
 					if resource, exists := resources[*relation.ResourceID]; exists {
-						fmt.Fprintf(&output, " -> %s", terminalValue(resource.Path))
+						fmt.Fprintf(&output, "\n      %s %s", style.muted("→"), terminalText(resource.Path))
 					} else {
-						fmt.Fprintf(&output, " -> resource=%s", terminalValue(*relation.ResourceID))
+						fmt.Fprintf(&output, "\n      %s %s", style.muted("→"), terminalText(*relation.ResourceID))
 					}
 					break
 				}
@@ -119,43 +170,164 @@ func RenderTerminal(document domain.ScanDocument) ([]byte, error) {
 			output.WriteByte('\n')
 		}
 	}
+	if visibleProjects < len(document.Projects) {
+		fmt.Fprintf(&output, "  %s %d more projects hidden · use --verbose to show all\n",
+			style.muted("…"), len(document.Projects)-visibleProjects)
+	}
 
-	fmt.Fprintf(&output, "\nLocal inventory resources (%d):\n", len(document.InstalledResources))
+	orderedResources := append([]domain.InstalledResource(nil), document.InstalledResources...)
+	sort.SliceStable(orderedResources, func(left, right int) bool {
+		leftSize := int64(-1)
+		rightSize := int64(-1)
+		if orderedResources[left].SizeBytes != nil {
+			leftSize = *orderedResources[left].SizeBytes
+		}
+		if orderedResources[right].SizeBytes != nil {
+			rightSize = *orderedResources[right].SizeBytes
+		}
+		if leftSize != rightSize {
+			return leftSize > rightSize
+		}
+		return orderedResources[left].ID < orderedResources[right].ID
+	})
+	visibleResources := len(orderedResources)
+	if !options.Verbose && visibleResources > 12 {
+		visibleResources = 12
+	}
+	output.WriteString(style.section(fmt.Sprintf("LARGEST RESOURCES  %d", len(document.InstalledResources))))
 	if len(document.InstalledResources) == 0 {
-		output.WriteString("  (none)\n")
+		fmt.Fprintf(&output, "  %s No local resources found\n", style.muted("—"))
 	}
-	for _, resource := range document.InstalledResources {
-		fmt.Fprintf(&output, "- [%s] %s/%s version=%s observed_size=%s potentially_reclaimable=%s\n",
-			resource.ReferenceStatus,
-			terminalValue(resource.Ecosystem),
-			terminalValue(resource.Component),
-			optionalTerminalValue(resource.Version),
-			formatSize(resource.SizeBytes),
-			formatSpaceEstimate(resource.PotentiallyReclaimable),
-		)
-		fmt.Fprintf(&output, "    path=%s id=%s\n", terminalValue(resource.Path), terminalValue(resource.ID))
-		fmt.Fprintf(&output, "    classifications=%s\n", formatCategories(resource.Classifications))
+	for _, resource := range orderedResources[:visibleResources] {
+		fmt.Fprintf(&output, "  %s %-10s %s/%s · %s\n",
+			resourceSymbol(style, resource), formatSize(resource.SizeBytes),
+			terminalText(resource.Ecosystem), terminalText(resource.Component), optionalTerminalText(resource.Version))
+		fmt.Fprintf(&output, "    %s\n", terminalText(resource.Path))
+		fmt.Fprintf(&output, "    %s · %s · %s", formatCategories(resource.Classifications), resource.ReferenceStatus, style.muted(terminalText(resource.ID)))
+		if resource.PotentiallyReclaimable != nil {
+			fmt.Fprintf(&output, " · reclaimable %s", formatSpaceEstimate(resource.PotentiallyReclaimable))
+		}
+		output.WriteByte('\n')
+	}
+	if visibleResources < len(orderedResources) {
+		fmt.Fprintf(&output, "  %s %d more resources hidden · use --verbose to show all\n",
+			style.muted("…"), len(orderedResources)-visibleResources)
 	}
 
-	fmt.Fprintf(&output, "\nDiagnostics (%d):\n", len(document.Diagnostics))
-	if len(document.Diagnostics) == 0 {
-		output.WriteString("  (none)\n")
+	diagnostics := document.Diagnostics
+	if !options.Verbose {
+		diagnostics = diagnosticsWithAttention(document.Diagnostics)
 	}
-	for _, diagnostic := range document.Diagnostics {
-		fmt.Fprintf(&output, "- [%s] %s scope=%s: %s",
-			diagnostic.Severity,
-			terminalValue(diagnostic.Code),
-			terminalValue(diagnostic.Scope),
-			terminalValue(diagnostic.Message),
-		)
+	output.WriteString(style.section(fmt.Sprintf("DIAGNOSTICS  %d", len(document.Diagnostics))))
+	if len(diagnostics) == 0 {
+		fmt.Fprintf(&output, "  %s No warnings or errors", statusSymbol(style, "OK"))
+		if len(document.Diagnostics) > 0 {
+			fmt.Fprintf(&output, " · %d informational hidden", len(document.Diagnostics))
+		}
+		output.WriteByte('\n')
+	}
+	for _, diagnostic := range diagnostics {
+		fmt.Fprintf(&output, "  %s %s · %s\n", statusSymbol(style, string(diagnostic.Severity)), terminalText(diagnostic.Code), terminalText(diagnostic.Message))
+		fmt.Fprintf(&output, "    scope %s", terminalText(diagnostic.Scope))
 		if diagnostic.Path != nil {
-			fmt.Fprintf(&output, " path=%s", terminalValue(*diagnostic.Path))
+			fmt.Fprintf(&output, " · %s", terminalText(*diagnostic.Path))
 		}
 		output.WriteByte('\n')
 	}
 
-	fmt.Fprintf(&output, "\nSafety: %s\n", safetyNotice)
+	output.WriteString(style.section("NEXT"))
+	output.WriteString("  Export evidence   dev-audit scan --format json --output audit.json\n")
+	output.WriteString("  Inspect an item   dev-audit explain --report audit.json <id>\n")
+	if !options.Verbose {
+		output.WriteString("  Show everything   dev-audit scan --verbose\n")
+	}
+
+	writeSafetyNotice(&output, style)
 	return []byte(output.String()), nil
+}
+
+func scanElapsed(startedAt, completedAt string) string {
+	started, startErr := time.Parse(time.RFC3339Nano, startedAt)
+	completed, completeErr := time.Parse(time.RFC3339Nano, completedAt)
+	if startErr != nil || completeErr != nil || completed.Before(started) {
+		return "completed"
+	}
+	duration := completed.Sub(started).Round(time.Millisecond)
+	if duration < time.Second {
+		return fmt.Sprintf("completed in %dms", duration.Milliseconds())
+	}
+	return fmt.Sprintf("completed in %.1fs", duration.Seconds())
+}
+
+func sumMatchStatus(counts map[domain.ExecutionEnvironment]map[domain.MatchStatus]int, status domain.MatchStatus) int {
+	total := 0
+	for _, byStatus := range counts {
+		total += byStatus[status]
+	}
+	return total
+}
+
+func writeEnvironmentSummary(output *strings.Builder, style terminalStyle, environment domain.ExecutionEnvironment, counts map[domain.MatchStatus]int) {
+	fmt.Fprintf(output, "  %-16s %s %d matched  %s %d missing  %s %d ambiguous  %s %d unknown\n",
+		environment,
+		statusSymbol(style, "MATCHED"), counts[domain.Matched],
+		statusSymbol(style, "MISSING"), counts[domain.Missing],
+		statusSymbol(style, "AMBIGUOUS"), counts[domain.Ambiguous],
+		statusSymbol(style, "UNKNOWN"), counts[domain.MatchUnknown])
+}
+
+func projectRelationCounts(project domain.Project, relations map[string]domain.Relation) (matched, missing, ambiguous, unknown int) {
+	for _, requirement := range project.Requirements {
+		for _, relation := range reportRelationsForRequirement(relations, project.ID, requirement.ID) {
+			switch relation.MatchStatus {
+			case domain.Matched:
+				matched++
+			case domain.Missing:
+				missing++
+			case domain.Ambiguous:
+				ambiguous++
+			default:
+				unknown++
+			}
+		}
+	}
+	return matched, missing, ambiguous, unknown
+}
+
+func relationSetSymbol(style terminalStyle, relations []domain.Relation) string {
+	status := "MATCHED"
+	for _, relation := range relations {
+		if relation.MatchStatus == domain.Missing {
+			return statusSymbol(style, "MISSING")
+		}
+		if relation.MatchStatus == domain.Ambiguous {
+			status = "AMBIGUOUS"
+		} else if relation.MatchStatus == domain.MatchUnknown && status == "MATCHED" {
+			status = "UNKNOWN"
+		}
+	}
+	return statusSymbol(style, status)
+}
+
+func resourceSymbol(style terminalStyle, resource domain.InstalledResource) string {
+	for _, category := range []domain.ResourceCategory{domain.CategorySensitive, domain.CategoryUnknown, domain.CategoryProbableOrphan, domain.CategoryUsed} {
+		for _, classification := range resource.Classifications {
+			if classification.Category == category {
+				return statusSymbol(style, string(category))
+			}
+		}
+	}
+	return statusSymbol(style, string(resource.ReferenceStatus))
+}
+
+func diagnosticsWithAttention(diagnostics []domain.Diagnostic) []domain.Diagnostic {
+	result := make([]domain.Diagnostic, 0)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == domain.SeverityWarning || diagnostic.Severity == domain.SeverityError {
+			result = append(result, diagnostic)
+		}
+	}
+	return result
 }
 
 func reportRelationsForRequirement(
@@ -182,32 +354,25 @@ func reportRelationsForRequirement(
 	return result
 }
 
-func writeRelationCounts(
-	output *strings.Builder,
-	environment domain.ExecutionEnvironment,
-	counts map[domain.MatchStatus]int,
-) {
-	fmt.Fprintf(output,
-		"Relations %s: MATCHED=%d MISSING=%d AMBIGUOUS=%d UNKNOWN=%d\n",
-		environment,
-		counts[domain.Matched], counts[domain.Missing],
-		counts[domain.Ambiguous], counts[domain.MatchUnknown],
-	)
-}
-
 func relationMapKey(projectID, requirementID string, environment domain.ExecutionEnvironment) string {
 	return projectID + "\x00" + requirementID + "\x00" + string(environment)
 }
 
-func terminalValue(value string) string {
-	return strconv.QuoteToASCII(value)
+// terminalText escapes control characters without surrounding ordinary values
+// with quotes. It is intended for the human-first terminal renderer only.
+func terminalText(value string) string {
+	quoted := strconv.QuoteToASCII(value)
+	if len(quoted) >= 2 {
+		return quoted[1 : len(quoted)-1]
+	}
+	return quoted
 }
 
-func optionalTerminalValue(value *string) string {
+func optionalTerminalText(value *string) string {
 	if value == nil {
 		return "unknown"
 	}
-	return terminalValue(*value)
+	return terminalText(*value)
 }
 
 func formatSize(size *int64) string {
@@ -226,6 +391,12 @@ func formatSize(size *int64) string {
 		unitIndex++
 	}
 	return fmt.Sprintf("%.1f %s", value, units[unitIndex])
+}
+
+func writeSafetyNotice(output *strings.Builder, style terminalStyle) {
+	output.WriteString(style.section("SAFETY"))
+	fmt.Fprintf(output, "  %s\n", style.muted("NO_REFERENCE_FOUND means no reference was found in the analyzed coverage."))
+	fmt.Fprintf(output, "  %s\n", style.muted("It never means safe to delete. Classifications and reclaimable space are observations, not cleanup recommendations."))
 }
 
 func formatSpaceEstimate(estimate *domain.SpaceEstimate) string {

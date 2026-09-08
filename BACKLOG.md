@@ -256,3 +256,25 @@ stratégie ciblée. Une sélection manuelle mixte a produit les trois commandes
 attendues, avec signalement `UTILISEE`/`INCONNUE`, confirmation obligatoire et
 zéro exécution. Tests `go test -race ./...`, `go vet ./...` et installation dans
 `/opt/homebrew/bin` réussis.
+
+### Lot 14 — Expérience terminal human-first
+
+- [x] Remplacer le rendu exhaustif par une synthèse lisible par défaut.
+- [x] Hiérarchiser `scan`, `explain` et `plan` avec des sections cohérentes.
+- [x] Afficher des symboles sémantiques qui ne dépendent jamais de la couleur.
+- [x] Ajouter `--verbose` au scan et au plan pour les détails secondaires.
+- [x] Ajouter `--color auto|always|never` et respecter `NO_COLOR`/`TERM=dumb`.
+- [x] Désactiver automatiquement les couleurs dans les fichiers, pipes et JSON.
+- [x] Limiter la vue par défaut à 12 projets, aux 12 plus grosses ressources et
+  aux diagnostics qui demandent de l'attention.
+- [x] Ajouter des prochaines commandes contextuelles dans le rapport de scan.
+- [x] Reconcevoir les aides avec commandes, workflow et exemples.
+- [x] Conserver le tri déterministe, l'échappement des caractères de contrôle et
+  les contrats JSON v1 inchangés.
+
+Gate validé sur le Mac 01 : le scan réel termine en 15 secondes et synthétise
+28 projets, 201 exigences et 86 ressources en limitant correctement les deux
+listes principales à 12 entrées. Le mode détaillé, `explain`, `plan`, les aides,
+la couleur explicite, `NO_COLOR`/`TERM=dumb` et l'absence d'ANSI dans le JSON
+sont testés. `go test -race ./...`, `go vet ./...` et la réinstallation dans
+`/opt/homebrew/bin` réussissent.

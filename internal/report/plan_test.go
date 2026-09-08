@@ -54,11 +54,12 @@ func TestCleanupPlanTerminalMakesSimulationAndRisksExplicit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"◆ dev-audit // cleanup review",
-		"mode=SIMULATION_ONLY  status=NOT_EXECUTED",
-		"command_not_executed=[\"docker\", \"buildx\", \"prune\", \"--filter\", \"id=cache123456789\"]",
-		"explicit_confirmation_required=true",
-		"risks=ANCIENNE,ORPHELINE_PROBABLE,RECONSTRUCTIBLE",
+		"◆ dev-audit  plan",
+		"SIMULATION ONLY · NOT EXECUTED",
+		"Command    not executed",
+		"[\"docker\", \"buildx\", \"prune\", \"--filter\", \"id=cache123456789\"]",
+		"Confirm    required",
+		"Risks      ANCIENNE,ORPHELINE_PROBABLE,RECONSTRUCTIBLE",
 	} {
 		if !bytes.Contains(terminal, []byte(expected)) {
 			t.Errorf("terminal plan missing %q:\n%s", expected, terminal)

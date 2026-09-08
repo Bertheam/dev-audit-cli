@@ -476,3 +476,31 @@ Le gate réel du Mac 01 trouve 15 paquets Android gérés par la nouvelle CLI, 4
 distributions Gradle Wrapper planifiables et 4 entrées DerivedData planifiables.
 Le plan mixte généré par le binaire installé contient exactement les trois
 commandes ciblées attendues et n'en exécute aucune.
+
+## 22. Lot 14 — expérience terminal human-first
+
+Les trois rendus humains suivent maintenant le même vocabulaire visuel : en-tête
+`◆ dev-audit`, mode de sécurité immédiatement visible, sections courtes, symboles
+sémantiques et commandes suivantes directement utilisables. `scan` affiche par
+défaut la synthèse, 12 projets, les 12 plus grosses ressources et seulement les
+diagnostics `WARNING`/`ERROR`. `--verbose` restitue les racines, exigences,
+ressources et diagnostics informatifs masqués dans la synthèse.
+
+`explain` distingue clairement l'identité, les relations, classifications,
+preuves, métadonnées et avertissements d'un objet. `plan` présente chaque action
+comme une fiche de revue avec taille, risques, projets affectés, impact,
+commande non exécutée et confirmation requise.
+
+La couleur est une amélioration facultative. Le mode `auto` ne l'active que sur
+un terminal interactif et la désactive pour `NO_COLOR`, `TERM=dumb`, les pipes
+et sorties fichier. `always` et `never` permettent une décision explicite. Les
+symboles et libellés conservent tout le sens sans couleur ; le JSON n'est jamais
+stylé. Le contrat de données, les codes de sortie et la frontière de sécurité ne
+changent pas.
+
+Le gate réel du Mac 01 termine en 15 secondes avec 28 projets, 201 exigences,
+86 ressources et aucun diagnostic demandant de l'attention. La vue compacte
+borne correctement les projets et ressources à 12 lignes, tandis que les 87
+diagnostics informatifs sont annoncés sans encombrer l'écran. Les tests avec le
+détecteur de courses, `go vet`, les trois rendus, la politique de couleur et le
+binaire réinstallé dans `/opt/homebrew/bin` sont validés.

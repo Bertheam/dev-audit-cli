@@ -10,6 +10,12 @@ import (
 // Explain renders the evidence and rationale associated with one project,
 // requirement or installed-resource identifier.
 func Explain(document domain.ScanDocument, identifier string) ([]byte, bool, error) {
+	return ExplainWithOptions(document, identifier, TerminalOptions{})
+}
+
+// ExplainWithOptions renders one report item using the human-first terminal
+// presentation. Options affect presentation only, never report semantics.
+func ExplainWithOptions(document domain.ScanDocument, identifier string, options TerminalOptions) ([]byte, bool, error) {
 	document, err := Normalize(document)
 	if err != nil {
 		return nil, false, err
@@ -21,48 +27,54 @@ func Explain(document domain.ScanDocument, identifier string) ([]byte, bool, err
 	if identifier == "" {
 		return nil, false, nil
 	}
+	style := newTerminalStyle(options)
 
 	for _, project := range document.Projects {
 		if project.ID == identifier {
-			return explainProject(document, project), true, nil
+			return explainProject(document, project, style), true, nil
 		}
 		for _, requirement := range project.Requirements {
 			if requirement.ID == identifier {
-				return explainRequirement(document, project, requirement), true, nil
+				return explainRequirement(document, project, requirement, style), true, nil
 			}
 		}
 	}
 	for _, resource := range document.InstalledResources {
 		if resource.ID == identifier {
-			return explainResource(document, resource), true, nil
+			return explainResource(document, resource, style), true, nil
 		}
 	}
 	return nil, false, nil
 }
 
-func explainProject(document domain.ScanDocument, project domain.Project) []byte {
+func explainProject(document domain.ScanDocument, project domain.Project, style terminalStyle) []byte {
 	var output strings.Builder
-	fmt.Fprintf(&output, "Project %s\n", terminalValue(project.ID))
-	fmt.Fprintf(&output, "  path: %s\n", terminalValue(project.Path))
-	fmt.Fprintf(&output, "  kind: %s\n", project.Kind)
-	fmt.Fprintf(&output, "  requirements (%d):\n", len(project.Requirements))
+	writeExplainHeader(&output, style, "PROJECT", project.ID)
+
+	output.WriteString(style.section("DETAILS"))
+	fmt.Fprintf(&output, "  Path  %s\n", terminalText(project.Path))
+	fmt.Fprintf(&output, "  Kind  %s\n", project.Kind)
+
+	output.WriteString(style.section(fmt.Sprintf("REQUIREMENTS  %d", len(project.Requirements))))
+	if len(project.Requirements) == 0 {
+		fmt.Fprintf(&output, "  %s No requirements found\n", style.muted("—"))
+	}
 	for _, requirement := range project.Requirements {
 		relations := explanationRelationsForRequirement(document.Relations, project.ID, requirement.ID)
-		fmt.Fprintf(&output, "    - [")
+		fmt.Fprintf(&output, "  %s %s/%s · %s\n",
+			relationSetSymbol(style, relations), terminalText(requirement.Ecosystem),
+			terminalText(requirement.Component), optionalTerminalText(requirement.VersionConstraint))
+		fmt.Fprintf(&output, "    %s · ", style.muted(terminalText(requirement.ID)))
 		for index, relation := range relations {
 			if index > 0 {
-				output.WriteByte(' ')
+				output.WriteString("  ")
 			}
 			fmt.Fprintf(&output, "%s:%s", relationEnvironment(relation), relation.MatchStatus)
 		}
-		fmt.Fprintf(&output, "] %s %s/%s constraint=%s\n",
-			terminalValue(requirement.ID),
-			terminalValue(requirement.Ecosystem),
-			terminalValue(requirement.Component),
-			optionalTerminalValue(requirement.VersionConstraint),
-		)
+		output.WriteByte('\n')
 	}
-	appendWarnings(&output, project.Warnings, "  ")
+	appendWarnings(&output, style, project.Warnings)
+	writeExplainFooter(&output, style)
 	return []byte(output.String())
 }
 
@@ -70,14 +82,20 @@ func explainRequirement(
 	document domain.ScanDocument,
 	project domain.Project,
 	requirement domain.Requirement,
+	style terminalStyle,
 ) []byte {
 	var output strings.Builder
-	fmt.Fprintf(&output, "Requirement %s\n", terminalValue(requirement.ID))
-	fmt.Fprintf(&output, "  project: %s path=%s\n", terminalValue(project.ID), terminalValue(project.Path))
-	fmt.Fprintf(&output, "  component: %s/%s\n", terminalValue(requirement.Ecosystem), terminalValue(requirement.Component))
-	fmt.Fprintf(&output, "  constraint: %s\n", optionalTerminalValue(requirement.VersionConstraint))
-	fmt.Fprintf(&output, "  confidence: %s\n", requirement.Confidence)
+	writeExplainHeader(&output, style, "REQUIREMENT", requirement.ID)
+
+	output.WriteString(style.section("DETAILS"))
+	fmt.Fprintf(&output, "  Project     %s\n", terminalText(project.ID))
+	fmt.Fprintf(&output, "  Path        %s\n", terminalText(project.Path))
+	fmt.Fprintf(&output, "  Component   %s/%s\n", terminalText(requirement.Ecosystem), terminalText(requirement.Component))
+	fmt.Fprintf(&output, "  Constraint  %s\n", optionalTerminalText(requirement.VersionConstraint))
+	fmt.Fprintf(&output, "  Confidence  %s\n", requirement.Confidence)
+
 	foundRelation := false
+	output.WriteString(style.section("MATCHES"))
 	for _, environment := range []domain.ExecutionEnvironment{
 		domain.EnvironmentHost,
 		domain.EnvironmentDocker,
@@ -88,19 +106,21 @@ func explainRequirement(
 			continue
 		}
 		foundRelation = true
-		fmt.Fprintf(&output, "  %s match: %s\n", environment, relation.MatchStatus)
-		fmt.Fprintf(&output, "  %s rationale: %s\n", environment, terminalValue(relation.Rationale))
+		fmt.Fprintf(&output, "  %s %s  %s\n", statusSymbol(style, string(relation.MatchStatus)), environment, relation.MatchStatus)
+		fmt.Fprintf(&output, "    %s\n", terminalText(relation.Rationale))
 		if relation.ResourceID != nil {
-			fmt.Fprintf(&output, "  %s resource: %s\n", environment, terminalValue(*relation.ResourceID))
+			fmt.Fprintf(&output, "    Resource  %s\n", style.muted(terminalText(*relation.ResourceID)))
 		}
-		appendWarnings(&output, relation.Warnings, "  ")
-		appendEvidence(&output, relation.Evidence, "  ")
+		appendInlineWarnings(&output, style, relation.Warnings)
+		appendEvidence(&output, style, relation.Evidence)
 	}
 	if !foundRelation {
-		fmt.Fprintf(&output, "  HOST match: UNKNOWN (relation absent from report)\n")
-		appendWarnings(&output, requirement.Warnings, "  ")
-		appendEvidence(&output, requirement.Evidence, "  ")
+		fmt.Fprintf(&output, "  %s HOST  UNKNOWN\n", statusSymbol(style, "UNKNOWN"))
+		output.WriteString("    Relation absent from report\n")
+		appendInlineWarnings(&output, style, requirement.Warnings)
+		appendEvidence(&output, style, requirement.Evidence)
 	}
+	writeExplainFooter(&output, style)
 	return []byte(output.String())
 }
 
@@ -128,52 +148,57 @@ func explanationRelationsForRequirement(
 	return result
 }
 
-func explainResource(document domain.ScanDocument, resource domain.InstalledResource) []byte {
+func explainResource(document domain.ScanDocument, resource domain.InstalledResource, style terminalStyle) []byte {
 	var output strings.Builder
-	fmt.Fprintf(&output, "Installed resource %s\n", terminalValue(resource.ID))
-	fmt.Fprintf(&output, "  component: %s/%s\n", terminalValue(resource.Ecosystem), terminalValue(resource.Component))
-	fmt.Fprintf(&output, "  version: %s\n", optionalTerminalValue(resource.Version))
-	fmt.Fprintf(&output, "  path: %s\n", terminalValue(resource.Path))
-	fmt.Fprintf(&output, "  observed size: %s\n", formatSize(resource.SizeBytes))
-	fmt.Fprintf(&output, "  potentially reclaimable: %s\n", formatSpaceEstimate(resource.PotentiallyReclaimable))
+	writeExplainHeader(&output, style, "RESOURCE", resource.ID)
+
+	output.WriteString(style.section("DETAILS"))
+	fmt.Fprintf(&output, "  Component    %s/%s\n", terminalText(resource.Ecosystem), terminalText(resource.Component))
+	fmt.Fprintf(&output, "  Version      %s\n", optionalTerminalText(resource.Version))
+	fmt.Fprintf(&output, "  Path         %s\n", terminalText(resource.Path))
+	fmt.Fprintf(&output, "  Size         %s observed\n", formatSize(resource.SizeBytes))
+	fmt.Fprintf(&output, "  Reclaimable  %s potential\n", formatSpaceEstimate(resource.PotentiallyReclaimable))
+	fmt.Fprintf(&output, "  Reference    %s %s\n", statusSymbol(style, string(resource.ReferenceStatus)), resource.ReferenceStatus)
 	if resource.PotentiallyReclaimable != nil {
-		fmt.Fprintf(&output, "  potentially reclaimable rationale: %s\n",
-			terminalValue(resource.PotentiallyReclaimable.Rationale))
-		appendEvidence(&output, resource.PotentiallyReclaimable.Evidence, "    ")
+		fmt.Fprintf(&output, "  Estimate     %s\n", terminalText(resource.PotentiallyReclaimable.Rationale))
+		appendEvidence(&output, style, resource.PotentiallyReclaimable.Evidence)
 	}
-	fmt.Fprintf(&output, "  reference status: %s\n", resource.ReferenceStatus)
-	fmt.Fprintf(&output, "  classifications (%d):\n", len(resource.Classifications))
+
+	output.WriteString(style.section(fmt.Sprintf("CLASSIFICATIONS  %d", len(resource.Classifications))))
 	if len(resource.Classifications) == 0 {
-		output.WriteString("    (not recorded in this report)\n")
+		fmt.Fprintf(&output, "  %s Not recorded in this report\n", style.muted("—"))
 	}
 	for _, classification := range resource.Classifications {
-		fmt.Fprintf(&output, "    - %s: %s\n", classification.Category, terminalValue(classification.Rationale))
-		appendEvidence(&output, classification.Evidence, "      ")
+		fmt.Fprintf(&output, "  %s %s\n", statusSymbol(style, string(classification.Category)), classification.Category)
+		fmt.Fprintf(&output, "    %s\n", terminalText(classification.Rationale))
+		appendEvidence(&output, style, classification.Evidence)
 	}
-	fmt.Fprintf(&output, "  safety: %s\n", safetyNotice)
-	output.WriteString("  metadata:\n")
-	if len(resource.Metadata) == 0 {
-		output.WriteString("    (none)\n")
-	}
-	for _, entry := range resource.Metadata {
-		fmt.Fprintf(&output, "    - %s=%s\n", terminalValue(entry.Key), terminalValue(entry.Value))
-	}
-	appendWarnings(&output, resource.Warnings, "  ")
 
-	output.WriteString("  matched relations:\n")
+	output.WriteString(style.section(fmt.Sprintf("MATCHED RELATIONS  %d", resourceRelationCount(document.Relations, resource.ID))))
 	matched := 0
 	for _, relation := range document.Relations {
 		if relation.ResourceID == nil || *relation.ResourceID != resource.ID {
 			continue
 		}
 		matched++
-		fmt.Fprintf(&output, "    - environment=%s project=%s requirement=%s status=%s\n",
-			relationEnvironment(relation), terminalValue(relation.ProjectID), terminalValue(relation.RequirementID), relation.MatchStatus)
-		fmt.Fprintf(&output, "      rationale=%s\n", terminalValue(relation.Rationale))
+		fmt.Fprintf(&output, "  %s %s · project %s · requirement %s\n",
+			statusSymbol(style, string(relation.MatchStatus)), relationEnvironment(relation),
+			terminalText(relation.ProjectID), terminalText(relation.RequirementID))
+		fmt.Fprintf(&output, "    %s\n", terminalText(relation.Rationale))
 	}
 	if matched == 0 {
-		output.WriteString("    (none)\n")
+		fmt.Fprintf(&output, "  %s None\n", style.muted("—"))
 	}
+
+	output.WriteString(style.section(fmt.Sprintf("METADATA  %d", len(resource.Metadata))))
+	if len(resource.Metadata) == 0 {
+		fmt.Fprintf(&output, "  %s None\n", style.muted("—"))
+	}
+	for _, entry := range resource.Metadata {
+		fmt.Fprintf(&output, "  %s  %s\n", terminalText(entry.Key), terminalText(entry.Value))
+	}
+	appendWarnings(&output, style, resource.Warnings)
+	writeExplainFooter(&output, style)
 	return []byte(output.String())
 }
 
@@ -192,40 +217,64 @@ func relationFor(
 	return domain.Relation{MatchStatus: domain.MatchUnknown}, false
 }
 
-func appendWarnings(output *strings.Builder, warnings []string, indent string) {
-	fmt.Fprintf(output, "%swarnings:\n", indent)
+func writeExplainHeader(output *strings.Builder, style terminalStyle, kind, identifier string) {
+	fmt.Fprintf(output, "%s  %s\n", style.title("◆ dev-audit"), style.heading("explain"))
+	fmt.Fprintf(output, "  %s · %s\n", style.accent(kind), style.muted(terminalText(identifier)))
+}
+
+func writeExplainFooter(output *strings.Builder, style terminalStyle) {
+	writeSafetyNotice(output, style)
+}
+
+func appendWarnings(output *strings.Builder, style terminalStyle, warnings []string) {
+	output.WriteString(style.section(fmt.Sprintf("WARNINGS  %d", len(warnings))))
 	if len(warnings) == 0 {
-		fmt.Fprintf(output, "%s  (none)\n", indent)
+		fmt.Fprintf(output, "  %s None\n", statusSymbol(style, "OK"))
 		return
 	}
 	for _, warning := range warnings {
-		fmt.Fprintf(output, "%s  - %s\n", indent, terminalValue(warning))
+		fmt.Fprintf(output, "  %s %s\n", style.warning("!"), terminalText(warning))
 	}
 }
 
-func appendEvidence(output *strings.Builder, evidence []domain.Evidence, indent string) {
-	fmt.Fprintf(output, "%sevidence:\n", indent)
+func appendInlineWarnings(output *strings.Builder, style terminalStyle, warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintf(output, "    %s %s\n", style.warning("!"), terminalText(warning))
+	}
+}
+
+func appendEvidence(output *strings.Builder, style terminalStyle, evidence []domain.Evidence) {
 	if len(evidence) == 0 {
-		fmt.Fprintf(output, "%s  (none)\n", indent)
 		return
 	}
+	fmt.Fprintf(output, "    %s\n", style.heading("Evidence"))
 	for _, item := range evidence {
-		fmt.Fprintf(output, "%s  - rule=%s source=%s", indent, terminalValue(item.RuleID), terminalValue(item.SourceType))
+		fmt.Fprintf(output, "      %s %s · %s", style.muted("•"), terminalText(item.RuleID), terminalText(item.SourceType))
 		if item.FilePath != nil {
-			fmt.Fprintf(output, " file=%s", terminalValue(*item.FilePath))
+			fmt.Fprintf(output, " · %s", terminalText(*item.FilePath))
 		}
 		if item.LineHint != nil {
-			fmt.Fprintf(output, " line=%d", *item.LineHint)
+			fmt.Fprintf(output, ":%d", *item.LineHint)
 		}
 		if item.Key != nil {
-			fmt.Fprintf(output, " key=%s", terminalValue(*item.Key))
+			fmt.Fprintf(output, " · %s", terminalText(*item.Key))
 		}
 		if item.ObservedValue != nil {
-			fmt.Fprintf(output, " observed=%s", terminalValue(*item.ObservedValue))
+			fmt.Fprintf(output, "=%s", terminalText(*item.ObservedValue))
 		}
 		if len(item.Command) > 0 {
-			fmt.Fprintf(output, " command=%s", terminalValue(strings.Join(item.Command, " ")))
+			fmt.Fprintf(output, " · %s", terminalText(strings.Join(item.Command, " ")))
 		}
 		output.WriteByte('\n')
 	}
+}
+
+func resourceRelationCount(relations []domain.Relation, resourceID string) int {
+	count := 0
+	for _, relation := range relations {
+		if relation.ResourceID != nil && *relation.ResourceID == resourceID {
+			count++
+		}
+	}
+	return count
 }

@@ -45,6 +45,21 @@ affiche les preuves d'un identifiant. La CLI est la seule couche autorisée à
 son empreinte et produit un artefact simulé ; une sortie fichier utilise une
 création exclusive afin de ne jamais remplacer un plan déjà revu.
 
+La couche CLI détermine aussi la présentation terminal : `--color auto` active
+les couleurs uniquement sur un TTY et respecte `NO_COLOR` ainsi que
+`TERM=dumb`. Une redirection, un writer non interactif ou une sortie JSON reste
+sans ANSI. `--verbose` modifie uniquement la densité du rendu, jamais le scan,
+le plan, leur ordre déterministe ou leur contrat public.
+
+### `internal/report`
+
+Produit les contrats JSON validés et les vues humaines de `scan`, `explain` et
+`plan`. Le rendu terminal compact favorise les éléments demandant de l'attention
+et les plus grosses ressources ; le mode détaillé expose la totalité des
+observations. Les statuts possèdent toujours un symbole et un libellé textuel,
+donc la couleur n'est jamais le seul porteur d'information. Toute valeur issue
+du système de fichiers ou d'un rapport est échappée avant affichage.
+
 ### `scripts` et `packaging`
 
 `install.sh` construit depuis les sources et requiert Go. Le script mainteneur

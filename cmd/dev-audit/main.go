@@ -115,16 +115,20 @@ func runPlan(
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		printPlanUsage(stderr)
-		flags.PrintDefaults()
+		printFlagDefaults(stderr, flags)
 	}
 	var reportPath string
 	var outputPath string
 	var format string
+	var colorMode string
+	var verbose bool
 	var resourceIDs stringListFlag
 	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
 	flags.Var(&resourceIDs, "resource", "resource ID to include manually; repeatable")
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
 	flags.StringVar(&outputPath, "output", "", "new output file; never overwritten; '-' means stdout")
+	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
+	flags.BoolVar(&verbose, "verbose", false, "show internal plan item identifiers")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -138,6 +142,11 @@ func runPlan(
 	format = strings.ToLower(strings.TrimSpace(format))
 	if format != "terminal" && format != "json" {
 		fmt.Fprintln(stderr, "--format must be terminal or json")
+		return exitUsage
+	}
+	colorMode, err := normalizeColorMode(colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
 	if outputPath != "" && outputPath != "-" && sameCleanPath(reportPath, outputPath) {
@@ -169,7 +178,10 @@ func runPlan(
 	if format == "json" {
 		payload, err = report.RenderPlanJSON(plan)
 	} else {
-		payload, err = report.RenderPlanTerminal(plan)
+		payload, err = report.RenderPlanTerminalWithOptions(plan, report.TerminalOptions{
+			Color:   terminalColorEnabled(colorMode, format, outputPath, stdout),
+			Verbose: verbose,
+		})
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "cannot render cleanup plan: %v\n", err)
@@ -199,7 +211,7 @@ func runScan(
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		printScanUsage(stderr)
-		flags.PrintDefaults()
+		printFlagDefaults(stderr, flags)
 	}
 	var projectRoots stringListFlag
 	var exclusions stringListFlag
@@ -212,11 +224,13 @@ func runScan(
 	var xcodeRoots stringListFlag
 	var appleDeveloperRoots stringListFlag
 	var format string
+	var colorMode string
 	var outputPath string
 	var timeout time.Duration
 	var autoDetect bool
 	var deepSearch bool
 	var dockerInventory bool
+	var verbose bool
 	var oldAfterDays int
 	flags.Var(&projectRoots, "root", "project search root; repeatable; auto-detected when omitted")
 	flags.Var(&exclusions, "exclude", "relative path or directory-name exclusion; repeatable")
@@ -229,11 +243,13 @@ func runScan(
 	flags.Var(&xcodeRoots, "xcode-root", "Xcode application root; repeatable")
 	flags.Var(&appleDeveloperRoots, "apple-developer-root", "Apple Developer data root, such as ~/Library/Developer; repeatable")
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
+	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
 	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
 	flags.BoolVar(&autoDetect, "auto-detect", true, "detect omitted project and inventory roots without executing tools")
 	flags.BoolVar(&deepSearch, "deep-search", true, "run a bounded search of conventional development locations")
 	flags.BoolVar(&dockerInventory, "docker-inventory", true, "observe local Docker images, containers, builders and BuildKit cache when available")
+	flags.BoolVar(&verbose, "verbose", false, "show roots, every requirement, resource, and diagnostic")
 	flags.IntVar(&oldAfterDays, "old-after-days", classification.DefaultOldAfterDays, "classify trusted last-use observations as old after this many days")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -256,6 +272,11 @@ func runScan(
 	format = strings.ToLower(strings.TrimSpace(format))
 	if format != "terminal" && format != "json" {
 		fmt.Fprintln(stderr, "--format must be terminal or json")
+		return exitUsage
+	}
+	colorMode, err := normalizeColorMode(colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
 
@@ -336,11 +357,13 @@ func runScan(
 	})
 
 	var payload []byte
-	var err error
 	if format == "json" {
 		payload, err = report.RenderJSON(document)
 	} else {
-		payload, err = report.RenderTerminal(document)
+		payload, err = report.RenderTerminalWithOptions(document, report.TerminalOptions{
+			Color:   terminalColorEnabled(colorMode, format, outputPath, stdout),
+			Verbose: verbose,
+		})
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "cannot render scan report: %v\n", err)
@@ -366,12 +389,14 @@ func runExplain(
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		printExplainUsage(stderr)
-		flags.PrintDefaults()
+		printFlagDefaults(stderr, flags)
 	}
 	var reportPath string
 	var outputPath string
+	var colorMode string
 	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
+	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -386,6 +411,11 @@ func runExplain(
 		fmt.Fprintln(stderr, "--output must not overwrite the input report")
 		return exitUsage
 	}
+	colorMode, err := normalizeColorMode(colorMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
 
 	content, err := dependencies.readFile(reportPath)
 	if err != nil {
@@ -397,7 +427,9 @@ func runExplain(
 		fmt.Fprintf(stderr, "invalid scan report: %v\n", err)
 		return exitOperationalError
 	}
-	payload, found, err := report.Explain(document, flags.Arg(0))
+	payload, found, err := report.ExplainWithOptions(document, flags.Arg(0), report.TerminalOptions{
+		Color: terminalColorEnabled(colorMode, "terminal", outputPath, stdout),
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "cannot explain report item: %v\n", err)
 		return exitOperationalError
@@ -521,32 +553,133 @@ func hasErrorDiagnostic(diagnostics []domain.Diagnostic) bool {
 	return false
 }
 
+func normalizeColorMode(value string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "auto", "always", "never":
+		return mode, nil
+	default:
+		return "", errors.New("--color must be auto, always, or never")
+	}
+}
+
+func terminalColorEnabled(mode, format, outputPath string, output io.Writer) bool {
+	if format != "terminal" {
+		return false
+	}
+	if mode == "always" {
+		return true
+	}
+	if mode == "never" || outputPath != "" && outputPath != "-" {
+		return false
+	}
+	if _, disabled := os.LookupEnv("NO_COLOR"); disabled || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	file, isFile := output.(*os.File)
+	if !isFile {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func printFlagDefaults(output io.Writer, flags *flag.FlagSet) {
+	flags.VisitAll(func(item *flag.Flag) {
+		label := "--" + item.Name + flagPlaceholder(item)
+		fmt.Fprintf(output, "  %-34s %s", label, item.Usage)
+		if item.DefValue != "" && item.DefValue != "false" {
+			fmt.Fprintf(output, " (default: %s)", item.DefValue)
+		}
+		fmt.Fprintln(output)
+	})
+}
+
+func flagPlaceholder(item *flag.Flag) string {
+	if boolFlag, ok := item.Value.(interface{ IsBoolFlag() bool }); ok && boolFlag.IsBoolFlag() {
+		return ""
+	}
+	switch item.Name {
+	case "color":
+		return " MODE"
+	case "exclude":
+		return " PATTERN"
+	case "format":
+		return " FORMAT"
+	case "old-after-days":
+		return " DAYS"
+	case "output", "report":
+		return " FILE"
+	case "resource":
+		return " ID"
+	case "timeout":
+		return " DURATION"
+	default:
+		return " PATH"
+	}
+}
+
 func printRootUsage(output io.Writer) {
-	fmt.Fprintln(output, "dev-audit — map first, reclaim space only with proof.")
+	fmt.Fprintln(output, "◆ dev-audit")
+	fmt.Fprintln(output, "  Understand what occupies your development machine before reclaiming space.")
 	fmt.Fprintln(output)
-	fmt.Fprintln(output, "Usage:")
-	fmt.Fprintln(output, "  dev-audit scan [--root PATH] [options]")
-	fmt.Fprintln(output, "  dev-audit explain --report FILE ID [--output FILE]")
-	fmt.Fprintln(output, "  dev-audit plan --report FILE [--resource ID ...] [options]")
-	fmt.Fprintln(output, "  dev-audit version")
+	fmt.Fprintln(output, "USAGE")
+	fmt.Fprintln(output, "  dev-audit <command> [options]")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "COMMANDS")
+	fmt.Fprintln(output, "  scan      Discover projects, SDKs, caches, and their relationships")
+	fmt.Fprintln(output, "  explain   Inspect the evidence behind one report item")
+	fmt.Fprintln(output, "  plan      Build a review-only cleanup simulation")
+	fmt.Fprintln(output, "  version   Print the installed version")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "WORKFLOW")
+	fmt.Fprintln(output, "  dev-audit scan")
+	fmt.Fprintln(output, "  dev-audit scan --format json --output audit.json")
+	fmt.Fprintln(output, "  dev-audit explain --report audit.json <id>")
+	fmt.Fprintln(output, "  dev-audit plan --report audit.json")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "Run 'dev-audit <command> --help' for command options.")
 }
 
 func printScanUsage(output io.Writer) {
-	fmt.Fprintln(output, "dev-audit — evidence-first inventory for macOS development environments.")
+	fmt.Fprintln(output, "◆ dev-audit scan")
+	fmt.Fprintln(output, "  Discover local development projects, runtimes, SDKs, and caches.")
 	fmt.Fprintln(output)
-	fmt.Fprintln(output, "Usage: dev-audit scan [--root PATH ...] [options]")
-	fmt.Fprintln(output, "Omitted roots are detected locally; use --auto-detect=false for explicit-only mode.")
+	fmt.Fprintln(output, "USAGE")
+	fmt.Fprintln(output, "  dev-audit scan [options]")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "EXAMPLES")
+	fmt.Fprintln(output, "  dev-audit scan")
+	fmt.Fprintln(output, "  dev-audit scan --verbose")
+	fmt.Fprintln(output, "  dev-audit scan --format json --output audit.json")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "OPTIONS")
 }
 
 func printExplainUsage(output io.Writer) {
-	fmt.Fprintln(output, "dev-audit — inspect the evidence behind one report item.")
+	fmt.Fprintln(output, "◆ dev-audit explain")
+	fmt.Fprintln(output, "  Inspect why one project, requirement, or resource received its status.")
 	fmt.Fprintln(output)
-	fmt.Fprintln(output, "Usage: dev-audit explain --report FILE ID [--output FILE]")
+	fmt.Fprintln(output, "USAGE")
+	fmt.Fprintln(output, "  dev-audit explain [options] --report FILE ID")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "EXAMPLE")
+	fmt.Fprintln(output, "  dev-audit explain --report audit.json <resource-id>")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "OPTIONS")
 }
 
 func printPlanUsage(output io.Writer) {
-	fmt.Fprintln(output, "dev-audit — review a cleanup simulation; nothing is executed.")
+	fmt.Fprintln(output, "◆ dev-audit plan")
+	fmt.Fprintln(output, "  Build a reviewable cleanup simulation. No command is executed.")
 	fmt.Fprintln(output)
-	fmt.Fprintln(output, "Usage: dev-audit plan --report FILE [--resource ID ...] [--format terminal|json] [--output NEW_FILE]")
-	fmt.Fprintln(output, "Without --resource, only conservative default-safe candidates are selected. No command is executed.")
+	fmt.Fprintln(output, "USAGE")
+	fmt.Fprintln(output, "  dev-audit plan --report FILE [options]")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "EXAMPLES")
+	fmt.Fprintln(output, "  dev-audit plan --report audit.json")
+	fmt.Fprintln(output, "  dev-audit plan --report audit.json --resource <id>")
+	fmt.Fprintln(output, "  dev-audit plan --report audit.json --format json --output plan.json")
+	fmt.Fprintln(output)
+	fmt.Fprintln(output, "OPTIONS")
 }

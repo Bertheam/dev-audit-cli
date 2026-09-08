@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -79,11 +80,11 @@ func TestLegacyRelationWithoutEnvironmentMeansHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy v1 relation should remain readable: %v", err)
 	}
-	rendered, err := RenderTerminal(document)
+	rendered, err := RenderTerminalWithOptions(document, TerminalOptions{Verbose: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(rendered, []byte("[HOST:MATCHED DOCKER:MATCHED]")) {
+	if !bytes.Contains(rendered, []byte("HOST:MATCHED")) {
 		t.Fatalf("legacy relation was not interpreted as HOST:\n%s", rendered)
 	}
 }
@@ -94,9 +95,9 @@ func TestExplainProjectRequirementAndResource(t *testing.T) {
 		id       string
 		contains []string
 	}{
-		{id: "project-one", contains: []string{"Project \"project-one\"", "requirements (1)"}},
-		{id: "requirement-one", contains: []string{"Requirement \"requirement-one\"", "HOST match: MATCHED", "DOCKER match: MATCHED", "test.rule"}},
-		{id: "resource-one", contains: []string{"Installed resource \"resource-one\"", "reference status: REFERENCED", "matched relations"}},
+		{id: "project-one", contains: []string{"PROJECT · project-one", "REQUIREMENTS  1"}},
+		{id: "requirement-one", contains: []string{"REQUIREMENT · requirement-one", "HOST  MATCHED", "DOCKER  MATCHED", "test.rule"}},
+		{id: "resource-one", contains: []string{"RESOURCE · resource-one", "Reference    ✓ REFERENCED", "MATCHED RELATIONS"}},
 	}
 	for _, test := range tests {
 		t.Run(test.id, func(t *testing.T) {
@@ -130,7 +131,7 @@ func TestRenderAndExplainPotentiallyReclaimableSpace(t *testing.T) {
 		t.Fatalf("space estimate must satisfy the JSON schema: %v", err)
 	}
 	terminal, err := RenderTerminal(document)
-	if err != nil || !bytes.Contains(terminal, []byte("potentially_reclaimable=1.0 KiB")) {
+	if err != nil || !bytes.Contains(terminal, []byte("reclaimable 1.0 KiB")) {
 		t.Fatalf("terminal did not separate potential space: err=%v\n%s", err, terminal)
 	}
 	explanation, found, err := Explain(document, "resource-one")
@@ -191,13 +192,13 @@ func TestRenderAndExplainDockerDaemonRelation(t *testing.T) {
 		Warnings:      []string{},
 	})
 
-	terminal, err := RenderTerminal(document)
-	if err != nil || !bytes.Contains(terminal, []byte("[DOCKER_DAEMON:MATCHED]")) ||
+	terminal, err := RenderTerminalWithOptions(document, TerminalOptions{Verbose: true})
+	if err != nil || !bytes.Contains(terminal, []byte("DOCKER_DAEMON:MATCHED")) ||
 		!bytes.Contains(terminal, []byte(`docker://image/sha256%3Afixture`)) {
 		t.Fatalf("terminal did not expose Docker daemon relation: err=%v\n%s", err, terminal)
 	}
 	explanation, found, err := Explain(document, "requirement-docker-image")
-	if err != nil || !found || !bytes.Contains(explanation, []byte("DOCKER_DAEMON match: MATCHED")) {
+	if err != nil || !found || !bytes.Contains(explanation, []byte("DOCKER_DAEMON  MATCHED")) {
 		t.Fatalf("explain did not expose Docker daemon relation: found=%v err=%v\n%s", found, err, explanation)
 	}
 }
@@ -211,6 +212,50 @@ func TestTerminalEscapesControlCharacters(t *testing.T) {
 	}
 	if bytes.Contains(content, []byte{0x1b}) || !bytes.Contains(content, []byte(`\x1b`)) {
 		t.Fatalf("terminal control character was not escaped: %q", content)
+	}
+}
+
+func TestTerminalColorIsExplicitAndSemanticTextRemainsVisible(t *testing.T) {
+	plain, err := RenderTerminalWithOptions(sampleDocument(), TerminalOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	colored, err := RenderTerminalWithOptions(sampleDocument(), TerminalOptions{Color: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(plain, []byte{0x1b}) {
+		t.Fatalf("plain terminal output contains ANSI escapes: %q", plain)
+	}
+	if !bytes.Contains(colored, []byte{0x1b}) || !bytes.Contains(colored, []byte("✓")) {
+		t.Fatalf("colored output lacks ANSI styling or semantic symbols: %q", colored)
+	}
+}
+
+func TestTerminalCompactViewLimitsProjectsAndVerboseRestoresDetails(t *testing.T) {
+	document := sampleDocument()
+	for index := 2; index <= 13; index++ {
+		document.Projects = append(document.Projects, domain.Project{
+			ID:           fmt.Sprintf("project-%02d", index),
+			Path:         fmt.Sprintf("/work/project-%02d", index),
+			Kind:         domain.ProjectDocker,
+			Requirements: []domain.Requirement{},
+			Warnings:     []string{},
+		})
+	}
+	compact, err := RenderTerminal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(compact, []byte("1 more projects hidden")) || bytes.Contains(compact, []byte("TEST_INFO")) {
+		t.Fatalf("compact view did not hide secondary detail:\n%s", compact)
+	}
+	verbose, err := RenderTerminalWithOptions(document, TerminalOptions{Verbose: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(verbose, []byte("more projects hidden")) || !bytes.Contains(verbose, []byte("TEST_INFO")) {
+		t.Fatalf("verbose view did not restore all detail:\n%s", verbose)
 	}
 }
 

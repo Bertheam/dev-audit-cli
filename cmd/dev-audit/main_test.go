@@ -201,6 +201,7 @@ func TestScanExitCodes(t *testing.T) {
 	}{
 		{name: "missing root", arguments: []string{"scan"}, document: validDocument(), want: exitUsage},
 		{name: "bad format", arguments: []string{"scan", "--root", "/work", "--format", "yaml"}, document: validDocument(), want: exitUsage},
+		{name: "bad color", arguments: []string{"scan", "--root", "/work", "--color", "sometimes"}, document: validDocument(), want: exitUsage},
 		{name: "bad timeout", arguments: []string{"scan", "--root", "/work", "--timeout", "0s"}, document: validDocument(), want: exitUsage},
 		{name: "bad age policy", arguments: []string{"scan", "--root", "/work", "--old-after-days", "0"}, document: validDocument(), want: exitUsage},
 		{name: "partial diagnostics", arguments: []string{"scan", "--root", "/work"}, document: documentWithError(), want: exitPartial},
@@ -246,7 +247,7 @@ func TestExplainReadsValidatedReport(t *testing.T) {
 	); exitCode != exitSuccess {
 		t.Fatalf("explain exit = %d, stderr=%q", exitCode, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `Installed resource "resource-one"`) {
+	if !strings.Contains(stdout.String(), `RESOURCE · resource-one`) {
 		t.Fatalf("unexpected explanation: %s", stdout.String())
 	}
 
@@ -367,7 +368,7 @@ func TestPlanUsesNewFileWriter(t *testing.T) {
 		},
 		writeNewFile: func(path string, payload []byte) error {
 			writtenPath = path
-			if !strings.Contains(string(payload), "SIMULATION_ONLY") {
+			if !strings.Contains(string(payload), "SIMULATION ONLY") {
 				t.Fatalf("unexpected plan payload: %s", payload)
 			}
 			return nil
@@ -444,6 +445,55 @@ func TestHelpCommandsSucceed(t *testing.T) {
 		if exitCode := runWithDependencies(arguments, &stdout, &stderr, commandDependencies{}); exitCode != exitSuccess {
 			t.Errorf("%v exit = %d", arguments, exitCode)
 		}
+	}
+}
+
+func TestScanTerminalPresentationFlags(t *testing.T) {
+	dependencies := commandDependencies{
+		scan: func(context.Context, application.Config) domain.ScanDocument { return validDocument() },
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"scan", "--root", "/work", "--verbose", "--color", "always"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitSuccess {
+		t.Fatalf("scan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "ROOTS  1") || !strings.Contains(stdout.String(), "\x1b[") {
+		t.Fatalf("verbose colored presentation not applied: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runWithDependencies(
+		[]string{"scan", "--root", "/work", "--format", "json", "--color", "always"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitSuccess {
+		t.Fatalf("JSON scan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Fatalf("JSON output contains ANSI escapes: %q", stdout.String())
+	}
+	if _, err := report.DecodeJSON(stdout.Bytes()); err != nil {
+		t.Fatalf("JSON output changed by color option: %v", err)
+	}
+}
+
+func TestTerminalColorPolicy(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	var output bytes.Buffer
+	if terminalColorEnabled("auto", "terminal", "", &output) {
+		t.Fatal("auto color must be disabled for non-interactive output")
+	}
+	if !terminalColorEnabled("always", "terminal", "", &output) {
+		t.Fatal("explicit always must override automatic color policy")
+	}
+	if terminalColorEnabled("always", "json", "", &output) {
+		t.Fatal("JSON must never enable terminal color")
+	}
+	if terminalColorEnabled("auto", "terminal", "report.txt", os.Stdout) {
+		t.Fatal("auto color must be disabled for files")
 	}
 }
 

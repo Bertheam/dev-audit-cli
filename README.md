@@ -151,17 +151,30 @@ Actions actuellement planifiables :
 ## Exemple de rendu
 
 ```text
-◆ dev-audit // cleanup review
-  version="0.3.0-dev"  mode=SIMULATION_ONLY  status=NOT_EXECUTED
+◆ dev-audit  scan
+  READ ONLY · 0.3.0-dev · completed in 4.2s
+  Scope: 3 roots · old after 180 days
 
-Simulated items (1):
-- resource="resource-0123456789abcdef" selected_by=MANUAL
-    type="gradle"/"gradle"
-    observed_size=676.5 MiB estimated_reclaimable=unknown
-    risks=RECONSTRUCTIBLE,UTILISEE
-    command_not_executed=["/bin/rm", "-R", "/Users/alice/.gradle/wrapper/dists/..."]
-    explicit_confirmation_required=true
+OVERVIEW
+  7 projects · 28 requirements · 61 resources · 4 diagnostics
+  Relations  ✓ 39 matched  ✗ 2 missing  ! 1 ambiguous  ? 6 unknown
+  Resources  ✓ 18 used  ? 21 unknown  ! 11 sensitive  ○ 3 probable orphan
+
+LARGEST RESOURCES  61
+  ○ 676.5 MiB  gradle/gradle · 8.10.2-all
+    /Users/alice/.gradle/wrapper/dists/gradle-8.10.2-all/...
+    ORPHELINE_PROBABLE,RECONSTRUCTIBLE · NO_REFERENCE_FOUND · resource-0123...
+
+NEXT
+  Export evidence   dev-audit scan --format json --output audit.json
+  Inspect an item   dev-audit explain --report audit.json <id>
+  Show everything   dev-audit scan --verbose
 ```
+
+Le rendu humain privilégie une synthèse actionnable : les avertissements,
+erreurs et plus grosses ressources apparaissent en premier. `--verbose` affiche
+les racines, toutes les exigences, toutes les ressources et les diagnostics
+informatifs. Les symboles restent compréhensibles sans couleur.
 
 ## Utilisation avancée
 
@@ -178,6 +191,18 @@ Désactiver la recherche profonde ou l'inventaire Docker :
 dev-audit scan --deep-search=false
 dev-audit scan --docker-inventory=false
 ```
+
+Contrôler le rendu terminal :
+
+```bash
+dev-audit scan --verbose
+dev-audit scan --color never
+dev-audit plan --report audit.json --color always
+```
+
+La couleur est activée automatiquement uniquement sur un terminal interactif.
+Elle est désactivée dans les fichiers, les pipes, avec `TERM=dumb` ou lorsque
+`NO_COLOR` est présent. Le JSON ne contient jamais de séquence ANSI.
 
 Réaliser un audit entièrement explicite :
 
