@@ -88,5 +88,10 @@
   `simctl`. Un téléchargement visible est protégé comme potentiellement actif ;
   l'absence de marqueur ne prouve pas qu'aucune opération Xcode n'est en cours.
 - DerivedData est reconstructible mais reste `INCONNUE` faute de preuve fiable
-  d'usage. Les runtimes, Device Support, appareils simulés et installations
-  Xcode ne reçoivent aucune action de planification dans ce lot.
+  d'usage. Une entrée précise peut désormais être placée dans un plan manuel,
+  avec suppression de chemin ciblée et avertissements ; les runtimes, Device
+  Support, appareils simulés et installations Xcode restent sans action.
+- Une distribution Gradle Wrapper ou une entrée DerivedData ne peut être
+  planifiée que si le scan a enregistré la stratégie de suppression ciblée et
+  si tous les segments structurants du chemin sont validés. Le dossier parent
+  complet et la racine sont toujours refusés.

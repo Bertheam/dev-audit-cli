@@ -47,6 +47,19 @@ func TestApplyKeepsSensitiveAVDUsageUnknown(t *testing.T) {
 	}
 }
 
+func TestApplyRecognizesModernAndroidCLIAsReconstructible(t *testing.T) {
+	result := Apply([]domain.InstalledResource{{
+		ID: "platform", Ecosystem: "android", Component: "android_sdk_platform", Path: "/sdk/platforms/android-36",
+		ReferenceStatus: domain.ReferenceUnknown,
+		Metadata: []domain.MetadataEntry{
+			{Key: "management", Value: "android sdk"},
+			{Key: "package_path", Value: "platforms;android-36"},
+		},
+	}}, Config{EvaluatedAt: mustTime(t, "2026-09-05T12:00:00Z")})
+
+	assertCategories(t, result.Resources[0], domain.CategoryReconstructible, domain.CategoryUnknown)
+}
+
 func TestApplyClassifiesXcodeDerivedDataAndProtectsSimulatorData(t *testing.T) {
 	result := Apply([]domain.InstalledResource{
 		{

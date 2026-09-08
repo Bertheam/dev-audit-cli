@@ -1,6 +1,6 @@
 # ADR 0016 — Figer un plan de nettoyage simulé avant toute exécution
 
-- Statut : accepté
+- Statut : accepté, amendé par l'ADR 0017
 - Date : 2026-09-05
 
 ## Contexte
@@ -40,7 +40,9 @@ Chaque élément contient son impact, sa commande sous forme de tableau
 d'arguments, les projets affectés, les risques, les preuves, les avertissements,
 la taille observée et l'estimation éventuelle. Toutes les actions exigent une
 confirmation explicite dans le contrat. Aucun shell, `docker system prune`,
-`--force` ou effacement direct de chemin n'est produit.
+`--force` ou effacement direct de chemin n'est produit dans le périmètre
+initial. L'ADR 0017 ajoute deux suppressions de cache strictement ciblées sans
+modifier le caractère simulé du plan.
 
 Le plan contient le SHA-256 des octets exacts du rapport source. Son `plan_id`
 est le SHA-256 de tous ses champs, identifiant exclu. Toute modification rend le

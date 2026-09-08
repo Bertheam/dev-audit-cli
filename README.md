@@ -79,8 +79,10 @@ racine au lieu de produire un diagnostic par lien.
 L'extension Android suivante inventorie aussi les images système installées et
 les Android Virtual Devices. Les racines AVD sont recherchées selon les
 variables Android documentées, l'emplacement `~/.android/avd` et la recherche
-profonde bornée. Une image système expose son API, son tag, son ABI et son
-identifiant de paquet `sdkmanager`. Un AVD reste toujours `UNKNOWN` à ce stade :
+profonde bornée. Une image système expose son API, son tag, son ABI, son
+identifiant de paquet et le gestionnaire réellement détecté. La CLI préfère
+`android sdk` et son chemin absolu, avec repli compatible sur `sdkmanager`. Un
+AVD reste toujours `UNKNOWN` à ce stade :
 il est marqué sensible parce que ses disques peuvent contenir des données
 mutables et aucune activité récente fiable n'est encore établie.
 
@@ -409,9 +411,13 @@ ou `UTILISEE`, accompagné d'avertissements. Il s'agit d'une sélection pour la
 revue, pas d'une confirmation d'exécution. Une ressource absente ou sans action
 ciblée prise en charge est placée dans `excluded` et donne le code de sortie
 `1`. Les actions décrites actuellement couvrent les caches BuildKit, images et
-conteneurs Docker, les paquets Android `sdkmanager` et les AVD gérés par
-`avdmanager`. Aucun `docker system prune`, `--force` ou suppression directe de
-chemin n'est produit.
+conteneurs Docker, les paquets Android gérés de préférence par `android sdk`,
+les AVD gérés par `avdmanager`, une distribution précise du cache Gradle
+Wrapper et une entrée précise de Xcode DerivedData. Ces deux dernières actions
+utilisent `/bin/rm -R` uniquement après validation stricte de la structure du
+chemin et ajoutent un avertissement de suppression définitive. Aucun
+`docker system prune`, shell, chemin racine ou effacement du dossier parent
+complet n'est produit. La CLI continue de simuler le plan sans l'exécuter.
 
 Un fichier de sortie est créé avec les permissions `0600`. Les rapports de scan
 refusent une sortie qui est un symlink et `explain` refuse d'écraser son rapport

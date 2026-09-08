@@ -231,7 +231,8 @@ Chaque ressource reçoit une catégorie explicable :
 ### Exécution sûre
 
 - `flutter clean` exécuté projet par projet après validation.
-- `sdkmanager --uninstall` pour les composants Android gérés.
+- `android sdk remove` pour les composants Android gérés, avec repli sur
+  `sdkmanager --uninstall` pour les installations anciennes.
 - API ou commandes Docker ciblées, jamais `docker system prune` par défaut.
 - `docker buildx prune` borné par une politique de stockage.
 - Arrêt si un build, émulateur ou outil concerné utilise activement la ressource.
@@ -459,7 +460,8 @@ du problème :
 
 - Flutter fournit `flutter clean`, limité au projet courant.
 - Gradle possède son propre nettoyage et des durées de rétention configurables.
-- Android Studio et `sdkmanager` installent ou désinstallent SDK et NDK.
+- Android Studio et `android sdk` installent ou désinstallent SDK et NDK ;
+  `sdkmanager` reste présent sur les installations plus anciennes.
 - Docker BuildKit possède un garbage collector et des limites de stockage.
 - FVM gère les versions Flutter par projet.
 - Des outils comme Mac Dev Cleaner et DevCleaner for Xcode regroupent plusieurs
@@ -472,7 +474,7 @@ La différenciation doit rester la **preuve d'utilisation inter-projets** et le
 
 - [Flutter CLI](https://docs.flutter.dev/reference/flutter-cli)
 - [Caches Gradle](https://docs.gradle.org/current/userguide/directory_layout.html)
-- [Android sdkmanager](https://developer.android.com/tools/sdkmanager)
+- [Android CLI et sdkmanager](https://developer.android.com/tools/sdkmanager)
 - [Garbage collection Docker BuildKit](https://docs.docker.com/build/cache/garbage-collection/)
 - [FVM](https://github.com/conceptadev/fvm)
 - [Mac Dev Cleaner](https://github.com/thanhdevapp/mac-dev-cleaner-cli)

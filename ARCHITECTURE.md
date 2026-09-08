@@ -196,8 +196,10 @@ Les appareils CoreSimulator portent une sensibilité explicite et un état
 d'activité `unknown`; les téléchargements de composants visibles portent
 `unknown_may_be_in_progress`. Les plist XML bornées servent uniquement à lire
 des clés allowlistées. Un plist binaire ou malformé ne déclenche aucune
-interprétation de remplacement. Ce lot n'appelle ni Xcode, ni `xcodebuild`, ni
-`simctl`, et n'ajoute aucune action Apple au plan simulé.
+interprétation de remplacement. L'inventaire n'appelle ni Xcode, ni
+`xcodebuild`, ni `simctl`. Seuls les enfants immédiats de DerivedData peuvent
+ensuite recevoir une action ciblée dans un plan manuel ; les autres ressources
+Apple restent sans action.
 
 Un bundle de runtime monté est détecté par son enveloppe et son nom, mais son
 arbre n'est pas mesuré. Sur le Mac de validation, chacun dépassait 500 000
@@ -250,8 +252,8 @@ heuristique.
 Applique après corrélation des catégories multiples, déterministes et
 accompagnées de preuves. `UTILISEE` exige une relation positive ou un état de
 conteneur actif observé. `RECONSTRUCTIBLE` exige un chemin de reconstruction
-identifiable : paquet `sdkmanager`, cache FVM versionné, cache Gradle, DerivedData
-Xcode ou cache BuildKit. `SENSIBLE` dérive uniquement d'une métadonnée de
+identifiable : paquet `android sdk` ou `sdkmanager`, cache FVM versionné, cache
+Gradle, DerivedData Xcode ou cache BuildKit. `SENSIBLE` dérive uniquement d'une métadonnée de
 sensibilité explicite.
 
 `ANCIENNE` compare une preuve fiable de dernière utilisation au seuil
@@ -277,9 +279,14 @@ politique par une sélection manuelle limitée aux identifiants demandés.
 
 Les actions prises en charge produisent uniquement des tableaux d'arguments
 ciblés : filtre d'identifiant BuildKit, identifiant d'image ou de conteneur,
-identifiant de paquet Android, ou nom d'AVD. Les localisateurs et métadonnées
-sont validés avant d'entrer dans une commande. Aucune action générale, option
-forcée, commande shell ou suppression directe de chemin n'est construite.
+identifiant de paquet Android, nom d'AVD, distribution Gradle Wrapper précise ou
+entrée DerivedData précise. Les localisateurs et métadonnées sont validés avant
+d'entrer dans une commande. Pour Android, le chemin absolu du gestionnaire
+détecté est conservé et `android sdk remove` est préféré à `sdkmanager`. Les
+deux nettoyages de cache utilisent `/bin/rm -R` sans shell après validation des
+parents attendus (`wrapper/dists` ou `Xcode/DerivedData`) et refusent le dossier
+parent lui-même. Aucune action générale, chemin racine, `docker system prune`
+ou commande shell n'est construite.
 
 Les projets affectés sont recopiés depuis les relations du rapport. Les impacts,
 catégories de risque, preuves, avertissements, tailles observées et estimations

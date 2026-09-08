@@ -137,6 +137,24 @@ func TestInventoryAndroidSystemImagesAndAVDs(t *testing.T) {
 	}
 }
 
+func TestInventoryPrefersModernAndroidCLIAndRecordsItsAbsolutePath(t *testing.T) {
+	androidRoot := filepath.Join(t.TempDir(), "android-sdk")
+	writeInventoryFixture(t, filepath.Join(androidRoot, "platforms", "android-36", "source.properties"), "AndroidVersion.ApiLevel=36\n")
+	androidCLI := filepath.Join(androidRoot, "cmdline-tools", "latest", "bin", "android")
+	writeInventoryFixture(t, androidCLI, "#!/bin/sh\n")
+	if err := os.Chmod(androidCLI, 0o755); err != nil {
+		t.Fatalf("make Android CLI fixture executable: %v", err)
+	}
+
+	result := New(OSFileSystem{}).Inspect(context.Background(), Config{AndroidSDKRoots: []string{androidRoot}})
+	platform := findResource(result.Resources, "android", "android_sdk_platform", "36")
+	if platform == nil || !hasMetadata(platform.Metadata, "management", "android sdk") ||
+		!hasMetadata(platform.Metadata, "manager_path", androidCLI) ||
+		!hasMetadata(platform.Metadata, "sdk_root", androidRoot) {
+		t.Fatalf("modern Android CLI metadata is missing: %#v", platform)
+	}
+}
+
 func TestInventoryAndroidAVDDoesNotFollowCandidateSymlink(t *testing.T) {
 	root := t.TempDir()
 	external := filepath.Join(t.TempDir(), "External.avd")

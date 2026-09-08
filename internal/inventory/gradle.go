@@ -110,6 +110,8 @@ func (inventory *Inventory) inspectGradleDistributions(
 					metadataEntry("inventory_source", "gradle_wrapper_cache"),
 					metadataEntry("distribution_type", distributionType),
 					metadataEntry("installation_path", installationPath),
+					metadataEntry("management", "filesystem"),
+					metadataEntry("cleanup_strategy", "targeted_directory_removal"),
 				},
 				nil,
 				limits,

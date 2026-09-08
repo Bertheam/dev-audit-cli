@@ -15,6 +15,11 @@ type androidPackageKind struct {
 	component string
 }
 
+type androidSDKManager struct {
+	name string
+	path string
+}
+
 var androidPackageKinds = []androidPackageKind{
 	{directory: "platforms", component: "android_sdk_platform"},
 	{directory: "build-tools", component: "android_build_tools"},
@@ -30,6 +35,7 @@ func (inventory *Inventory) inspectAndroidRoot(
 	result *Result,
 ) {
 	before := builder.len()
+	manager := inventory.detectAndroidSDKManager(root)
 	for _, packageKind := range androidPackageKinds {
 		if ctx.Err() != nil {
 			break
@@ -86,18 +92,18 @@ func (inventory *Inventory) inspectAndroidRoot(
 			if _, ok := inventory.inspectCandidateDirectory(candidatePath, limits, result); !ok {
 				continue
 			}
-			inventory.addAndroidPackage(ctx, root, candidatePath, packageKind.component, limits, builder, result)
+			inventory.addAndroidPackage(ctx, root, candidatePath, packageKind.component, manager, limits, builder, result)
 		}
 	}
 	if ctx.Err() == nil && builder.len() < limits.MaxResources {
-		inventory.inspectAndroidSystemImages(ctx, root, limits, builder, result)
+		inventory.inspectAndroidSystemImages(ctx, root, manager, limits, builder, result)
 	}
 
 	legacyNDK := filepath.Join(root, "ndk-bundle")
 	if ctx.Err() == nil && builder.len() < limits.MaxResources {
 		if _, err := inventory.fileSystem.Lstat(legacyNDK); err == nil {
 			if _, ok := inventory.inspectCandidateDirectory(legacyNDK, limits, result); ok {
-				inventory.addAndroidPackage(ctx, root, legacyNDK, "ndk", limits, builder, result)
+				inventory.addAndroidPackage(ctx, root, legacyNDK, "ndk", manager, limits, builder, result)
 			}
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			result.Diagnostics = append(result.Diagnostics, fileErrorDiagnostic(
@@ -125,6 +131,7 @@ func (inventory *Inventory) inspectAndroidRoot(
 func (inventory *Inventory) inspectAndroidSystemImages(
 	ctx context.Context,
 	sdkRoot string,
+	manager androidSDKManager,
 	limits Limits,
 	builder *resourceBuilder,
 	result *Result,
@@ -194,21 +201,25 @@ func (inventory *Inventory) inspectAndroidSystemImages(
 					continue
 				}
 				version := strings.Join([]string{"android-" + apiLevel, tagEntry.Name(), abiEntry.Name()}, "/")
+				metadata := []domain.MetadataEntry{
+					metadataEntry("inventory_source", "android_sdk_root"),
+					metadataEntry("sdk_root", sdkRoot),
+					metadataEntry("api_level", apiLevel),
+					metadataEntry("tag", tagEntry.Name()),
+					metadataEntry("abi", abiEntry.Name()),
+					metadataEntry("package_path", strings.Join([]string{"system-images", "android-" + apiLevel, tagEntry.Name(), abiEntry.Name()}, ";")),
+					metadataEntry("management", manager.name),
+				}
+				if manager.path != "" {
+					metadata = append(metadata, metadataEntry("manager_path", manager.path))
+				}
 				inventory.addMeasuredResource(
 					ctx,
 					"android",
 					"android_system_image",
 					&version,
 					imagePath,
-					[]domain.MetadataEntry{
-						metadataEntry("inventory_source", "android_sdk_root"),
-						metadataEntry("sdk_root", sdkRoot),
-						metadataEntry("api_level", apiLevel),
-						metadataEntry("tag", tagEntry.Name()),
-						metadataEntry("abi", abiEntry.Name()),
-						metadataEntry("package_path", strings.Join([]string{"system-images", "android-" + apiLevel, tagEntry.Name(), abiEntry.Name()}, ";")),
-						metadataEntry("management", "sdkmanager"),
-					},
+					metadata,
 					[]string{"no project reference is inferred for Android system images yet"},
 					limits,
 					builder,
@@ -320,6 +331,7 @@ func (inventory *Inventory) addAndroidPackage(
 	sdkRoot string,
 	packagePath string,
 	component string,
+	manager androidSDKManager,
 	limits Limits,
 	builder *resourceBuilder,
 	result *Result,
@@ -352,8 +364,11 @@ func (inventory *Inventory) addAndroidPackage(
 	if packageIdentifier, ok := androidPackageIdentifier(sdkRoot, packagePath); ok {
 		metadata = append(metadata,
 			metadataEntry("package_path", packageIdentifier),
-			metadataEntry("management", "sdkmanager"),
+			metadataEntry("management", manager.name),
 		)
+		if manager.path != "" {
+			metadata = append(metadata, metadataEntry("manager_path", manager.path))
+		}
 	}
 	var versionPointer *string
 	if version != "" {
@@ -372,6 +387,48 @@ func (inventory *Inventory) addAndroidPackage(
 		builder,
 		result,
 	)
+}
+
+func (inventory *Inventory) detectAndroidSDKManager(sdkRoot string) androidSDKManager {
+	cmdlineToolsRoot := filepath.Join(sdkRoot, "cmdline-tools")
+	toolDirectories := []string{"latest"}
+	if entries, err := inventory.fileSystem.ReadDir(cmdlineToolsRoot); err == nil {
+		for index := len(entries) - 1; index >= 0; index-- {
+			name := entries[index].Name()
+			if name != "latest" && isSafeVersion(name) {
+				toolDirectories = append(toolDirectories, name)
+			}
+		}
+	}
+
+	for _, executable := range []struct {
+		name       string
+		components []string
+	}{
+		{name: "android sdk", components: []string{"bin", "android"}},
+		{name: "sdkmanager", components: []string{"bin", "sdkmanager"}},
+	} {
+		for _, directory := range toolDirectories {
+			candidate := filepath.Join(cmdlineToolsRoot, directory, executable.components[0], executable.components[1])
+			if inventory.isExecutableRegularFile(sdkRoot, candidate) {
+				return androidSDKManager{name: executable.name, path: candidate}
+			}
+		}
+	}
+
+	legacy := filepath.Join(sdkRoot, "tools", "bin", "sdkmanager")
+	if inventory.isExecutableRegularFile(sdkRoot, legacy) {
+		return androidSDKManager{name: "sdkmanager", path: legacy}
+	}
+	return androidSDKManager{name: "sdkmanager"}
+}
+
+func (inventory *Inventory) isExecutableRegularFile(root, path string) bool {
+	if inventory.rejectSymlinkPath(root, path) != nil {
+		return false
+	}
+	info, err := inventory.fileSystem.Lstat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
 func androidPackageIdentifier(sdkRoot, packagePath string) (string, bool) {

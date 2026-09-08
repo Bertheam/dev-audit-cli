@@ -98,12 +98,25 @@ func TestPlanIsDeterministicAndDoesNotMutateSource(t *testing.T) {
 
 func TestOfficialActionsRemainTargetedArgumentArrays(t *testing.T) {
 	document := planningDocument()
+	gradleVersion := "8.14.4"
 	document.InstalledResources = append(document.InstalledResources,
 		domain.InstalledResource{
 			ID: "android-package", Ecosystem: "android", Component: "android_sdk_platform", Path: "/sdk/platforms/android-36",
 			ReferenceStatus: domain.ReferenceUnknown,
 			Classifications: []domain.ResourceClassification{classification(domain.CategoryUnknown)},
-			Metadata:        []domain.MetadataEntry{{Key: "management", Value: "sdkmanager"}, {Key: "package_path", Value: "platforms;android-36"}},
+			Metadata: []domain.MetadataEntry{
+				{Key: "management", Value: "android sdk"},
+				{Key: "manager_path", Value: "/sdk/cmdline-tools/latest/bin/android"},
+				{Key: "package_path", Value: "platforms;android-36"},
+				{Key: "sdk_root", Value: "/sdk"},
+			},
+			Warnings: []string{},
+		},
+		domain.InstalledResource{
+			ID: "android-legacy-package", Ecosystem: "android", Component: "android_sdk_platform", Path: "/legacy-sdk/platforms/android-35",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Classifications: []domain.ResourceClassification{classification(domain.CategoryUnknown)},
+			Metadata:        []domain.MetadataEntry{{Key: "management", Value: "sdkmanager"}, {Key: "package_path", Value: "platforms;android-35"}},
 			Warnings:        []string{},
 		},
 		domain.InstalledResource{
@@ -119,18 +132,44 @@ func TestOfficialActionsRemainTargetedArgumentArrays(t *testing.T) {
 			Classifications: []domain.ResourceClassification{classification(domain.CategoryUnknown)},
 			Metadata:        []domain.MetadataEntry{{Key: "management", Value: "docker image"}}, Warnings: []string{},
 		},
+		domain.InstalledResource{
+			ID: "gradle-wrapper", Ecosystem: "gradle", Component: "gradle", Version: &gradleVersion,
+			Path: "/Users/test/.gradle/wrapper/dists/gradle-8.14.4-all/cachekey123", ReferenceStatus: domain.ReferenceUnknown,
+			Classifications: []domain.ResourceClassification{classification(domain.CategoryReconstructible), classification(domain.CategoryUnknown)},
+			Metadata: []domain.MetadataEntry{
+				{Key: "inventory_source", Value: "gradle_wrapper_cache"},
+				{Key: "distribution_type", Value: "all"},
+				{Key: "installation_path", Value: "/Users/test/.gradle/wrapper/dists/gradle-8.14.4-all/cachekey123/gradle-8.14.4"},
+				{Key: "management", Value: "filesystem"},
+				{Key: "cleanup_strategy", Value: "targeted_directory_removal"},
+			}, Warnings: []string{},
+		},
+		domain.InstalledResource{
+			ID: "xcode-derived", Ecosystem: "apple", Component: "xcode_derived_data",
+			Path: "/Users/test/Library/Developer/Xcode/DerivedData/Runner-abc123", ReferenceStatus: domain.ReferenceUnknown,
+			Classifications: []domain.ResourceClassification{classification(domain.CategoryReconstructible), classification(domain.CategoryUnknown)},
+			Metadata: []domain.MetadataEntry{
+				{Key: "inventory_source", Value: "xcode_derived_data"},
+				{Key: "resource_name", Value: "Runner-abc123"},
+				{Key: "management", Value: "filesystem"},
+				{Key: "cleanup_strategy", Value: "targeted_directory_removal"},
+			}, Warnings: []string{},
+		},
 	)
 	plan, err := Build(document, Config{
 		ToolVersion: "test", SourceReportSHA256: testReportSHA256,
-		ResourceIDs: []string{"android-package", "android-avd", "docker-image"},
+		ResourceIDs: []string{"android-package", "android-legacy-package", "android-avd", "docker-image", "gradle-wrapper", "xcode-derived"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wants := map[string][]string{
-		"android-package": {"sdkmanager", "--uninstall", "platforms;android-36"},
-		"android-avd":     {"avdmanager", "delete", "avd", "-n", "Pixel_API_36"},
-		"docker-image":    {"docker", "image", "rm", "sha256:abcdef123456"},
+		"android-package":        {"/sdk/cmdline-tools/latest/bin/android", "sdk", "remove", "platforms;android-36"},
+		"android-legacy-package": {"sdkmanager", "--uninstall", "platforms;android-35"},
+		"android-avd":            {"avdmanager", "delete", "avd", "-n", "Pixel_API_36"},
+		"docker-image":           {"docker", "image", "rm", "sha256:abcdef123456"},
+		"gradle-wrapper":         {"/bin/rm", "-R", "/Users/test/.gradle/wrapper/dists/gradle-8.14.4-all/cachekey123"},
+		"xcode-derived":          {"/bin/rm", "-R", "/Users/test/Library/Developer/Xcode/DerivedData/Runner-abc123"},
 	}
 	for resourceID, command := range wants {
 		item := findItem(plan, resourceID)
@@ -138,6 +177,39 @@ func TestOfficialActionsRemainTargetedArgumentArrays(t *testing.T) {
 			t.Errorf("%s command = %#v, want %#v", resourceID, item, command)
 		}
 	}
+}
+
+func TestTargetedFilesystemActionsRejectBroadOrInconsistentPaths(t *testing.T) {
+	version := "8.14.4"
+	document := planningDocument()
+	document.InstalledResources = append(document.InstalledResources,
+		domain.InstalledResource{
+			ID: "bad-gradle", Ecosystem: "gradle", Component: "gradle", Version: &version, Path: "/",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Classifications: []domain.ResourceClassification{classification(domain.CategoryReconstructible), classification(domain.CategoryUnknown)},
+			Metadata: []domain.MetadataEntry{
+				{Key: "inventory_source", Value: "gradle_wrapper_cache"}, {Key: "distribution_type", Value: "all"},
+				{Key: "installation_path", Value: "/gradle-8.14.4"}, {Key: "management", Value: "filesystem"},
+				{Key: "cleanup_strategy", Value: "targeted_directory_removal"},
+			}, Warnings: []string{},
+		},
+		domain.InstalledResource{
+			ID: "bad-xcode", Ecosystem: "apple", Component: "xcode_derived_data", Path: "/Users/test/Library/Developer/Xcode/DerivedData",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Classifications: []domain.ResourceClassification{classification(domain.CategoryReconstructible), classification(domain.CategoryUnknown)},
+			Metadata: []domain.MetadataEntry{
+				{Key: "inventory_source", Value: "xcode_derived_data"}, {Key: "resource_name", Value: "DerivedData"},
+				{Key: "management", Value: "filesystem"}, {Key: "cleanup_strategy", Value: "targeted_directory_removal"},
+			}, Warnings: []string{},
+		},
+	)
+
+	plan, err := Build(document, Config{ToolVersion: "test", SourceReportSHA256: testReportSHA256, ResourceIDs: []string{"bad-gradle", "bad-xcode"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertExcludedFor(t, plan, "bad-gradle", domain.ExclusionUnsupportedAction)
+	assertExcludedFor(t, plan, "bad-xcode", domain.ExclusionUnsupportedAction)
 }
 
 func planningDocument() domain.ScanDocument {

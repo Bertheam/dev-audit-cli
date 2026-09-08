@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -20,6 +21,8 @@ var (
 	dockerObjectPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:+-]{0,255}$`)
 	androidPackagePattern = regexp.MustCompile(`^[A-Za-z0-9._+:-]+(?:;[A-Za-z0-9._+:-]+)+$`)
 	avdNamePattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
+	safeVersionPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+*-]{0,79}$`)
+	gradleCacheKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
 )
 
 type Config struct {
@@ -67,7 +70,7 @@ func Build(document domain.ScanDocument, config Config) (domain.CleanupPlan, err
 		Excluded: []domain.CleanupPlanExclusion{},
 		Warnings: []string{
 			"Simulation only: no command in this plan was executed.",
-			"Official commands are stored as argument arrays for review and are not shell scripts.",
+			"Targeted commands are stored as argument arrays for review and are not shell scripts.",
 			"The reclaimable total is a sum of known estimates and is not a guaranteed post-cleanup disk gain.",
 		},
 	}
@@ -243,13 +246,17 @@ func actionForResource(resource domain.InstalledResource) (cleanupAction, bool) 
 			Command: []string{"docker", "container", "rm", objectID},
 			Impact:  "Removes the container and its writable layer; mutable data stored only in that layer can be permanently lost, while named volumes are not requested for removal.",
 		}, true
-	case resource.Ecosystem == "android" && managementOK && management == "sdkmanager":
+	case resource.Ecosystem == "android" && managementOK && (management == "android sdk" || management == "sdkmanager"):
 		packagePath, ok := uniqueMetadata(resource.Metadata, "package_path")
 		if !ok || !androidPackagePattern.MatchString(packagePath) {
 			return cleanupAction{}, false
 		}
+		command, ok := androidRemovalCommand(resource, management, packagePath)
+		if !ok {
+			return cleanupAction{}, false
+		}
 		return cleanupAction{
-			Command: []string{"sdkmanager", "--uninstall", packagePath},
+			Command: command,
 			Impact:  "Uninstalls this Android SDK package; affected builds may fail until the same package is installed again.",
 		}, true
 	case resource.Ecosystem == "android" && resource.Component == "android_avd" && managementOK && management == "avdmanager":
@@ -262,9 +269,113 @@ func actionForResource(resource domain.InstalledResource) (cleanupAction, bool) 
 			Impact:   "Deletes this Android Virtual Device and its mutable emulator data; the loss can be permanent.",
 			Warnings: []string{"avdmanager is deprecated by current Android documentation; the command is retained because it is the manager recorded by the scan."},
 		}, true
+	case resource.Ecosystem == "gradle" && resource.Component == "gradle" &&
+		managementOK && management == "filesystem":
+		if !isTargetedGradleWrapperCache(resource) {
+			return cleanupAction{}, false
+		}
+		return cleanupAction{
+			Command: []string{"/bin/rm", "-R", resource.Path},
+			Impact:  "Removes one exact Gradle Wrapper distribution cache; a project that needs this version will download it again on its next build.",
+			Warnings: []string{
+				"This is a permanent targeted filesystem deletion, not a Gradle package-manager operation.",
+				"Stop Gradle builds and daemons that may be using this distribution before executing the command.",
+			},
+		}, true
+	case resource.Ecosystem == "apple" && resource.Component == "xcode_derived_data" &&
+		managementOK && management == "filesystem":
+		if !isTargetedXcodeDerivedData(resource) {
+			return cleanupAction{}, false
+		}
+		return cleanupAction{
+			Command: []string{"/bin/rm", "-R", resource.Path},
+			Impact:  "Removes one exact Xcode DerivedData entry; build products, indexes and module caches in it will be regenerated.",
+			Warnings: []string{
+				"This is a permanent targeted filesystem deletion, not an Xcode project clean operation.",
+				"Close Xcode and stop xcodebuild processes before executing the command.",
+			},
+		}, true
 	default:
 		return cleanupAction{}, false
 	}
+}
+
+func androidRemovalCommand(resource domain.InstalledResource, management, packagePath string) ([]string, bool) {
+	executable := ""
+	if managerPath, ok := uniqueMetadata(resource.Metadata, "manager_path"); ok {
+		sdkRoot, rootOK := uniqueMetadata(resource.Metadata, "sdk_root")
+		executableName := "android"
+		if management == "sdkmanager" {
+			executableName = "sdkmanager"
+		}
+		if !rootOK || !isAndroidManagerPath(sdkRoot, managerPath, executableName) {
+			return nil, false
+		}
+		executable = managerPath
+	} else if management == "android sdk" {
+		executable = "android"
+	} else {
+		executable = "sdkmanager"
+	}
+	if management == "android sdk" {
+		return []string{executable, "sdk", "remove", packagePath}, true
+	}
+	return []string{executable, "--uninstall", packagePath}, true
+}
+
+func isAndroidManagerPath(sdkRoot, managerPath, executableName string) bool {
+	if !isCleanAbsolutePath(sdkRoot) || !isCleanAbsolutePath(managerPath) || filepath.Base(managerPath) != executableName {
+		return false
+	}
+	relative, err := filepath.Rel(sdkRoot, managerPath)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if executableName == "android" {
+		return len(parts) == 4 && parts[0] == "cmdline-tools" && safeVersionPattern.MatchString(parts[1]) && parts[2] == "bin"
+	}
+	return (len(parts) == 4 && parts[0] == "cmdline-tools" && safeVersionPattern.MatchString(parts[1]) && parts[2] == "bin") ||
+		(len(parts) == 3 && parts[0] == "tools" && parts[1] == "bin")
+}
+
+func isTargetedGradleWrapperCache(resource domain.InstalledResource) bool {
+	source, sourceOK := uniqueMetadata(resource.Metadata, "inventory_source")
+	strategy, strategyOK := uniqueMetadata(resource.Metadata, "cleanup_strategy")
+	distributionType, typeOK := uniqueMetadata(resource.Metadata, "distribution_type")
+	installationPath, installationOK := uniqueMetadata(resource.Metadata, "installation_path")
+	if !sourceOK || source != "gradle_wrapper_cache" || !strategyOK || strategy != "targeted_directory_removal" ||
+		!typeOK || (distributionType != "all" && distributionType != "bin") || !installationOK ||
+		resource.Version == nil || !safeVersionPattern.MatchString(*resource.Version) || !isCleanAbsolutePath(resource.Path) {
+		return false
+	}
+	if !gradleCacheKeyPattern.MatchString(filepath.Base(resource.Path)) {
+		return false
+	}
+	distributionDirectory := filepath.Dir(resource.Path)
+	if filepath.Base(distributionDirectory) != "gradle-"+*resource.Version+"-"+distributionType ||
+		filepath.Base(filepath.Dir(distributionDirectory)) != "dists" ||
+		filepath.Base(filepath.Dir(filepath.Dir(distributionDirectory))) != "wrapper" {
+		return false
+	}
+	return installationPath == filepath.Join(resource.Path, "gradle-"+*resource.Version)
+}
+
+func isTargetedXcodeDerivedData(resource domain.InstalledResource) bool {
+	source, sourceOK := uniqueMetadata(resource.Metadata, "inventory_source")
+	strategy, strategyOK := uniqueMetadata(resource.Metadata, "cleanup_strategy")
+	resourceName, nameOK := uniqueMetadata(resource.Metadata, "resource_name")
+	if !sourceOK || source != "xcode_derived_data" || !strategyOK || strategy != "targeted_directory_removal" ||
+		!nameOK || resourceName == "." || resourceName == ".." || !isCleanAbsolutePath(resource.Path) ||
+		filepath.Base(resource.Path) != resourceName {
+		return false
+	}
+	derivedDataDirectory := filepath.Dir(resource.Path)
+	return filepath.Base(derivedDataDirectory) == "DerivedData" && filepath.Base(filepath.Dir(derivedDataDirectory)) == "Xcode"
+}
+
+func isCleanAbsolutePath(path string) bool {
+	return path != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && path != string(filepath.Separator)
 }
 
 func dockerObjectID(locator string, expectedHosts ...string) (string, bool) {

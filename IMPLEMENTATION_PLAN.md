@@ -306,7 +306,8 @@ Une racine AVD distincte est détectée depuis les variables Android documentée
 `~/.android/avd` et la recherche profonde bornée. Les pointeurs et symlinks ne
 sont pas suivis.
 
-Les images système exposent leur identifiant de paquet `sdkmanager`. Les AVD
+Au Lot 7, les images système exposaient leur identifiant de paquet avec
+`sdkmanager`. Le Lot 13 préfère désormais la nouvelle CLI `android sdk`. Les AVD
 sont marqués sensibles, restent `UNKNOWN` et ne donnent lieu à aucune action.
 Sur le Mac 01, le scan zéro-configuration a trouvé 2 images système et 1 AVD,
 sans diagnostic `WARNING` ou `ERROR`. Le prochain lot fonctionnel est le Lot 8 —
@@ -398,10 +399,10 @@ contenu hors identifiant. Le décodage rejette toute altération. Une sortie
 fichier est créée en `0600` avec création exclusive et ne peut pas écraser un
 plan existant.
 
-Les adaptateurs actuels décrivent des actions ciblées pour les caches BuildKit,
-images et conteneurs Docker, les paquets `sdkmanager` et les AVD `avdmanager`.
-Ils ne produisent ni shell, ni `docker system prune`, ni `--force`, ni
-suppression directe de chemin.
+Les adaptateurs du Lot 10 décrivaient initialement des actions ciblées pour les
+caches BuildKit, images et conteneurs Docker, les paquets `sdkmanager` et les
+AVD `avdmanager`. Le Lot 13 étend cette liste et remplace ces limites initiales
+pour Android, Gradle Wrapper et DerivedData.
 
 Le gate réel du Mac 01 a utilisé le rapport du Lot 9 afin de ne pas perturber le
 téléchargement Xcode du simulateur iOS 26.5. La sélection automatique a produit
@@ -456,3 +457,22 @@ aides ont reçu une courte phrase décrivant la promesse du produit.
 Cette présentation n'utilise pas de couleurs ANSI, afin de ne pas polluer les
 redirections et les journaux. `dev-audit version` reste une valeur brute pour
 les scripts, et aucun champ JSON ou invariant de domaine n'a changé.
+
+## 21. Lot 13 — actions ciblées Gradle/Xcode et CLI Android moderne
+
+Le plan reconnaît désormais la nouvelle commande `android sdk remove` lorsque
+l'exécutable est présent dans une installation `cmdline-tools`. Son chemin
+absolu est inventorié pour ne pas dépendre du `PATH`; `sdkmanager` reste un
+repli pour les SDK plus anciens.
+
+Les distributions Gradle Wrapper et les enfants immédiats de Xcode DerivedData
+peuvent entrer dans une sélection manuelle. Comme aucun gestionnaire officiel
+ne supprime ces unités précises, le plan expose `/bin/rm -R` après validation
+structurelle du chemin et avec avertissements d'arrêt des processus concernés.
+Le plan reste une simulation immuable et ne constitue jamais une autorisation
+d'exécution.
+
+Le gate réel du Mac 01 trouve 15 paquets Android gérés par la nouvelle CLI, 4
+distributions Gradle Wrapper planifiables et 4 entrées DerivedData planifiables.
+Le plan mixte généré par le binaire installé contient exactement les trois
+commandes ciblées attendues et n'en exécute aucune.

@@ -234,3 +234,25 @@ stockage physique fiable.
 
 Gate validé : golden terminal, tests de plan, échappement des caractères de
 contrôle et installation réelle de `dev-audit 0.3.0-dev` réussis.
+
+### Lot 13 — Actions ciblées de cache et CLI Android moderne
+
+- [x] Détecter `android` sous les emplacements `cmdline-tools` standards et
+  conserver son chemin absolu dans l'inventaire.
+- [x] Produire `android sdk remove <package>` avec repli sur `sdkmanager` pour
+  les installations plus anciennes.
+- [x] Rendre une distribution Gradle Wrapper précise planifiable après
+  validation stricte de sa version, de son type, de sa clé et de son chemin.
+- [x] Rendre une entrée Xcode DerivedData précise planifiable sans jamais
+  accepter le dossier DerivedData complet.
+- [x] Conserver le mode `SIMULATION_ONLY`, la sélection manuelle et la
+  confirmation obligatoire pour les suppressions directes de cache.
+- [x] Valider le nouveau plan sur un scan réel du Mac 01 et réinstaller le
+  binaire utilisateur.
+
+Gate validé sur le Mac 01 : 15 paquets Android utilisent le chemin absolu de
+`android`, 4 distributions Gradle Wrapper et 4 entrées DerivedData exposent la
+stratégie ciblée. Une sélection manuelle mixte a produit les trois commandes
+attendues, avec signalement `UTILISEE`/`INCONNUE`, confirmation obligatoire et
+zéro exécution. Tests `go test -race ./...`, `go vet ./...` et installation dans
+`/opt/homebrew/bin` réussis.

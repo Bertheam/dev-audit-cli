@@ -95,7 +95,7 @@ func classifyReconstructible(resource *domain.InstalledResource) bool {
 	management, _ := uniqueMetadata(resource.Metadata, "management")
 	switch {
 	case resource.Ecosystem == "android" && resource.Component != "android_avd" &&
-		management == "sdkmanager":
+		(management == "android sdk" || management == "sdkmanager"):
 		packagePath, ok := uniqueMetadata(resource.Metadata, "package_path")
 		if !ok || packagePath == "" {
 			return false

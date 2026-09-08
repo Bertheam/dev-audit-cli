@@ -74,8 +74,10 @@ func (inventory *Inventory) inspectAppleDeveloperRoot(
 	result *Result,
 ) {
 	before := builder.len()
-	inventory.inspectAppleChildren(ctx, root, filepath.Join(root, "Xcode", "DerivedData"), "xcode_derived_data", "xcode_derived_data", nil,
-		[]string{"generated Xcode build and index data; no cleanup action is implemented"}, limits, builder, result)
+	inventory.inspectAppleChildren(ctx, root, filepath.Join(root, "Xcode", "DerivedData"), "xcode_derived_data", "xcode_derived_data", []domain.MetadataEntry{
+		metadataEntry("management", "filesystem"),
+		metadataEntry("cleanup_strategy", "targeted_directory_removal"),
+	}, []string{"generated Xcode build and index data; cleanup requires explicit plan selection and confirmation"}, limits, builder, result)
 	inventory.inspectAppleChildren(ctx, root, filepath.Join(root, "Xcode", "iOS DeviceSupport"), "xcode_device_support", "xcode_device_support", nil,
 		[]string{"device support compatibility cannot be inferred from filesystem presence alone"}, limits, builder, result)
 	inventory.inspectSimulatorDevices(ctx, root, limits, builder, result)
