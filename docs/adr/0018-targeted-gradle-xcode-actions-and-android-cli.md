@@ -1,4 +1,4 @@
-# ADR 0017 — Actions ciblées Gradle/Xcode et nouvelle CLI Android
+# ADR 0018 — Actions ciblées Gradle/Xcode et nouvelle CLI Android
 
 - Statut : accepté
 - Date : 2026-09-08
