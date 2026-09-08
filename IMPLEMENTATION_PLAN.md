@@ -504,3 +504,29 @@ borne correctement les projets et ressources à 12 lignes, tandis que les 87
 diagnostics informatifs sont annoncés sans encombrer l'écran. Les tests avec le
 détecteur de courses, `go vet`, les trois rendus, la politique de couleur et le
 binaire réinstallé dans `/opt/homebrew/bin` sont validés.
+
+## 23. Lot 15 — progression fidèle du pipeline
+
+La progression ne simule pas un pourcentage impossible à garantir sur un
+système de fichiers inconnu. L'orchestrateur publie plutôt de courtes
+descriptions des vraies étapes : découverte, analyse statique, lecture Docker et
+Compose, inventaires typés, daemon Docker, corrélation, classification et
+préparation du rapport. La CLI ajoute l'auto-détection et le rendu autour de ce
+flux.
+
+Un afficheur local anime ces informations toutes les 100 ms sur `stderr` avec
+le temps écoulé. Il attend le premier tick avant d'afficher quoi que ce soit,
+ce qui évite un flash pour `explain` ou `plan` lorsque l'opération est
+instantanée. En mode automatique, un TTY fonctionnel est obligatoire. Le mode
+forcé sur un pipe produit des lignes ordinaires ; le mode `never` reste
+silencieux.
+
+Le callback de progression est facultatif et sans effet sur les résultats. La
+progression n'entre jamais dans `stdout`, dans les JSON ou dans les golden tests
+des rapports. Son arrêt attend la fin de la goroutine avant l'écriture du
+rapport afin d'empêcher tout entrelacement.
+
+Le gate réel du Mac 01 observe le spinner pendant 16,3 secondes. Les libellés
+passent notamment de la détection aux 28 projets, puis aux inventaires Android,
+Flutter, Gradle et Xcode avant Docker. La ligne animée est effacée avant le
+rapport compact et aucune séquence de progression n'apparaît dans `stdout`.

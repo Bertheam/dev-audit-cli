@@ -202,6 +202,7 @@ func TestScanExitCodes(t *testing.T) {
 		{name: "missing root", arguments: []string{"scan"}, document: validDocument(), want: exitUsage},
 		{name: "bad format", arguments: []string{"scan", "--root", "/work", "--format", "yaml"}, document: validDocument(), want: exitUsage},
 		{name: "bad color", arguments: []string{"scan", "--root", "/work", "--color", "sometimes"}, document: validDocument(), want: exitUsage},
+		{name: "bad progress", arguments: []string{"scan", "--root", "/work", "--progress", "sometimes"}, document: validDocument(), want: exitUsage},
 		{name: "bad timeout", arguments: []string{"scan", "--root", "/work", "--timeout", "0s"}, document: validDocument(), want: exitUsage},
 		{name: "bad age policy", arguments: []string{"scan", "--root", "/work", "--old-after-days", "0"}, document: validDocument(), want: exitUsage},
 		{name: "partial diagnostics", arguments: []string{"scan", "--root", "/work"}, document: documentWithError(), want: exitPartial},
@@ -240,7 +241,7 @@ func TestExplainReadsValidatedReport(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if exitCode := runWithDependencies(
-		[]string{"explain", "--report", "report.json", "resource-one"},
+		[]string{"explain", "--report", "report.json", "--progress", "always", "resource-one"},
 		&stdout,
 		&stderr,
 		dependencies,
@@ -249,6 +250,9 @@ func TestExplainReadsValidatedReport(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `RESOURCE · resource-one`) {
 		t.Fatalf("unexpected explanation: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Explanation ready") || strings.Contains(stdout.String(), "Loading the scan report") {
+		t.Fatalf("explain progress used the wrong stream: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()
@@ -308,7 +312,7 @@ func TestPlanReadsValidatedReportAndEmitsSchemaValidJSON(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exitCode := runWithDependencies(
-		[]string{"plan", "--report", "report.json", "--resource", "resource-cache", "--format", "json"},
+		[]string{"plan", "--report", "report.json", "--resource", "resource-cache", "--format", "json", "--progress", "always"},
 		&stdout,
 		&stderr,
 		dependencies,
@@ -323,6 +327,9 @@ func TestPlanReadsValidatedReportAndEmitsSchemaValidJSON(t *testing.T) {
 	if plan.Selection.Mode != domain.SelectionExplicitResourceIDs || len(plan.Items) != 1 ||
 		plan.Items[0].OfficialCommand[0] != "docker" {
 		t.Fatalf("unexpected plan: %#v", plan)
+	}
+	if !strings.Contains(stderr.String(), "Cleanup plan ready") || strings.Contains(stdout.String(), "Building the cleanup simulation") {
+		t.Fatalf("plan progress used the wrong stream: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -494,6 +501,71 @@ func TestTerminalColorPolicy(t *testing.T) {
 	}
 	if terminalColorEnabled("auto", "terminal", "report.txt", os.Stdout) {
 		t.Fatal("auto color must be disabled for files")
+	}
+}
+
+func TestScanForcedProgressUsesStderrAndPreservesJSON(t *testing.T) {
+	dependencies := commandDependencies{
+		scan: func(_ context.Context, config application.Config) domain.ScanDocument {
+			config.Progress("Inventorying fixture resources")
+			return validDocument()
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := runWithDependencies(
+		[]string{"scan", "--root", "/work", "--format", "json", "--progress", "always", "--color", "always"},
+		&stdout, &stderr, dependencies,
+	); exitCode != exitSuccess {
+		t.Fatalf("scan exit = %d, stderr=%q", exitCode, stderr.String())
+	}
+	for _, expected := range []string{
+		"Searching standard development locations",
+		"Inventorying fixture resources",
+		"Scan complete",
+	} {
+		if !strings.Contains(stderr.String(), expected) {
+			t.Errorf("progress does not contain %q: %q", expected, stderr.String())
+		}
+	}
+	if strings.Contains(stderr.String(), "\x1b[") {
+		t.Fatalf("non-interactive forced progress contains ANSI: %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Inventorying") || strings.Contains(stdout.String(), "\x1b[") {
+		t.Fatalf("progress or ANSI polluted stdout: %q", stdout.String())
+	}
+	if _, err := report.DecodeJSON(stdout.Bytes()); err != nil {
+		t.Fatalf("progress changed JSON output: %v", err)
+	}
+}
+
+func TestProgressDisplayCanBeDisabled(t *testing.T) {
+	var output bytes.Buffer
+	display := newProgressDisplay("never", "always", &output)
+	display.Start("Starting")
+	display.Update("Working")
+	display.Stop(true, "Complete")
+	if output.Len() != 0 {
+		t.Fatalf("disabled progress wrote output: %q", output.String())
+	}
+}
+
+func TestInteractiveProgressAnimationStopsCleanly(t *testing.T) {
+	var output bytes.Buffer
+	display := &progressDisplay{
+		writer:      &output,
+		enabled:     true,
+		interactive: true,
+	}
+	display.Start("Discovering projects")
+	time.Sleep(250 * time.Millisecond)
+	display.Update("Inventorying resources")
+	time.Sleep(150 * time.Millisecond)
+	display.Stop(true, "Scan complete")
+	if !strings.Contains(output.String(), "\r\x1b[2K") ||
+		!strings.Contains(output.String(), "Inventorying resources") ||
+		!strings.Contains(output.String(), "✓ Scan complete") {
+		t.Fatalf("interactive progress was not rendered and stopped cleanly: %q", output.String())
 	}
 }
 

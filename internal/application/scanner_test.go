@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,9 +58,13 @@ func TestScannerRunsReadOnlyPipelineAndProducesSchemaValidDocument(t *testing.T)
 		"test-version",
 	)
 
+	progressMessages := []string{}
 	document := scanner.Scan(context.Background(), application.Config{
 		ProjectRoots:    []string{filepath.Join("..", "..", "testdata")},
 		FlutterSDKRoots: []string{flutterRoot},
+		Progress: func(message string) {
+			progressMessages = append(progressMessages, message)
+		},
 	})
 
 	if err := document.Validate(); err != nil {
@@ -95,6 +100,20 @@ func TestScannerRunsReadOnlyPipelineAndProducesSchemaValidDocument(t *testing.T)
 	}
 	if hasDiagnostic(document.Diagnostics, "INVENTORY_NOT_CONFIGURED") {
 		t.Fatal("configured Flutter inventory was reported as absent")
+	}
+	progressOutput := strings.Join(progressMessages, "\n")
+	for _, expected := range []string{
+		"Discovering projects",
+		"Analyzing 2 projects",
+		"Reading Docker and Compose declarations",
+		"Inventorying Flutter and FVM SDKs",
+		"Correlating 2 projects",
+		"Classifying 1 resource",
+		"Preparing the report",
+	} {
+		if !strings.Contains(progressOutput, expected) {
+			t.Errorf("progress does not contain %q:\n%s", expected, progressOutput)
+		}
 	}
 	afterContent, afterInfo := snapshot(t, versionPath)
 	if string(afterContent) != string(beforeContent) || !afterInfo.ModTime().Equal(beforeInfo.ModTime()) {

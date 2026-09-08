@@ -121,6 +121,7 @@ func runPlan(
 	var outputPath string
 	var format string
 	var colorMode string
+	var progressMode string
 	var verbose bool
 	var resourceIDs stringListFlag
 	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
@@ -128,6 +129,7 @@ func runPlan(
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
 	flags.StringVar(&outputPath, "output", "", "new output file; never overwritten; '-' means stdout")
 	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
+	flags.StringVar(&progressMode, "progress", "auto", "progress display: auto, always, or never")
 	flags.BoolVar(&verbose, "verbose", false, "show internal plan item identifiers")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -149,32 +151,46 @@ func runPlan(
 		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
+	progressMode, err = normalizeProgressMode(progressMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
 	if outputPath != "" && outputPath != "-" && sameCleanPath(reportPath, outputPath) {
 		fmt.Fprintln(stderr, "--output must not overwrite the input report")
 		return exitUsage
 	}
 
+	progress := newProgressDisplay(progressMode, colorMode, stderr)
+	progress.Start("Loading the scan report")
+	defer progress.Stop(false, "Plan stopped")
+
 	content, err := dependencies.readFile(reportPath)
 	if err != nil {
+		progress.Stop(false, "Could not load the scan report")
 		fmt.Fprintf(stderr, "cannot read scan report: %v\n", err)
 		return exitOperationalError
 	}
 	document, err := report.DecodeJSON(content)
 	if err != nil {
+		progress.Stop(false, "The scan report is invalid")
 		fmt.Fprintf(stderr, "invalid scan report: %v\n", err)
 		return exitOperationalError
 	}
 	digest := sha256.Sum256(content)
+	progress.Update("Building the cleanup simulation")
 	plan, err := planning.Build(document, planning.Config{
 		ToolVersion:        version,
 		SourceReportSHA256: hex.EncodeToString(digest[:]),
 		ResourceIDs:        []string(resourceIDs),
 	})
 	if err != nil {
+		progress.Stop(false, "Could not build the cleanup simulation")
 		fmt.Fprintf(stderr, "cannot build cleanup plan: %v\n", err)
 		return exitOperationalError
 	}
 	var payload []byte
+	progress.Update("Rendering the cleanup plan")
 	if format == "json" {
 		payload, err = report.RenderPlanJSON(plan)
 	} else {
@@ -184,9 +200,11 @@ func runPlan(
 		})
 	}
 	if err != nil {
+		progress.Stop(false, "Could not render the cleanup plan")
 		fmt.Fprintf(stderr, "cannot render cleanup plan: %v\n", err)
 		return exitOperationalError
 	}
+	progress.Stop(true, "Cleanup plan ready")
 	if outputPath != "" && outputPath != "-" && dependencies.writeNewFile == nil {
 		fmt.Fprintln(stderr, "cannot write immutable cleanup plan: new-file writer is unavailable")
 		return exitOperationalError
@@ -225,6 +243,7 @@ func runScan(
 	var appleDeveloperRoots stringListFlag
 	var format string
 	var colorMode string
+	var progressMode string
 	var outputPath string
 	var timeout time.Duration
 	var autoDetect bool
@@ -244,6 +263,7 @@ func runScan(
 	flags.Var(&appleDeveloperRoots, "apple-developer-root", "Apple Developer data root, such as ~/Library/Developer; repeatable")
 	flags.StringVar(&format, "format", "terminal", "output format: terminal or json")
 	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
+	flags.StringVar(&progressMode, "progress", "auto", "progress display: auto, always, or never")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
 	flags.DurationVar(&timeout, "timeout", defaultScanTimeout, "maximum total scan duration")
 	flags.BoolVar(&autoDetect, "auto-detect", true, "detect omitted project and inventory roots without executing tools")
@@ -279,14 +299,23 @@ func runScan(
 		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
+	progressMode, err = normalizeProgressMode(progressMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	progress := newProgressDisplay(progressMode, colorMode, stderr)
+	progress.Start("Searching standard development locations")
+	defer progress.Stop(false, "Scan stopped")
 
 	preScanDiagnostics := []domain.Diagnostic{}
 	heuristicInventoryFamilies := []string{}
 	projectDiscoveryHeuristic := false
 	if autoDetect && dependencies.detect != nil {
+		progress.Update("Detecting projects and toolchains")
 		needFlutterFamily := len(flutterRoots)+len(fvmRoots) == 0
 		needAppleFamily := len(xcodeRoots)+len(appleDeveloperRoots) == 0
 		detected := dependencies.detect(ctx, autodetect.Config{
@@ -330,6 +359,7 @@ func runScan(
 		}
 	}
 	if len(projectRoots) == 0 {
+		progress.Stop(false, "No project root found")
 		if autoDetect {
 			fmt.Fprintln(stderr, "no project root was provided or detected; pass --root PATH")
 		} else {
@@ -354,9 +384,11 @@ func runScan(
 		PreScanDiagnostics:         preScanDiagnostics,
 		ProjectDiscoveryHeuristic:  projectDiscoveryHeuristic,
 		HeuristicInventoryFamilies: heuristicInventoryFamilies,
+		Progress:                   progress.Update,
 	})
 
 	var payload []byte
+	progress.Update("Rendering the scan report")
 	if format == "json" {
 		payload, err = report.RenderJSON(document)
 	} else {
@@ -366,9 +398,11 @@ func runScan(
 		})
 	}
 	if err != nil {
+		progress.Stop(false, "Could not render the scan report")
 		fmt.Fprintf(stderr, "cannot render scan report: %v\n", err)
 		return exitOperationalError
 	}
+	progress.Stop(true, "Scan complete")
 	if err := writePayload(stdout, outputPath, payload, dependencies.writeFile); err != nil {
 		fmt.Fprintf(stderr, "cannot write scan report: %v\n", err)
 		return exitOperationalError
@@ -394,9 +428,11 @@ func runExplain(
 	var reportPath string
 	var outputPath string
 	var colorMode string
+	var progressMode string
 	flags.StringVar(&reportPath, "report", "", "JSON v1 scan report to read")
 	flags.StringVar(&outputPath, "output", "", "explicit output file; '-' means stdout")
 	flags.StringVar(&colorMode, "color", "auto", "terminal color: auto, always, or never")
+	flags.StringVar(&progressMode, "progress", "auto", "progress display: auto, always, or never")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitSuccess
@@ -416,28 +452,43 @@ func runExplain(
 		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
+	progressMode, err = normalizeProgressMode(progressMode)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitUsage
+	}
+
+	progress := newProgressDisplay(progressMode, colorMode, stderr)
+	progress.Start("Loading the scan report")
+	defer progress.Stop(false, "Explanation stopped")
 
 	content, err := dependencies.readFile(reportPath)
 	if err != nil {
+		progress.Stop(false, "Could not load the scan report")
 		fmt.Fprintf(stderr, "cannot read scan report: %v\n", err)
 		return exitOperationalError
 	}
 	document, err := report.DecodeJSON(content)
 	if err != nil {
+		progress.Stop(false, "The scan report is invalid")
 		fmt.Fprintf(stderr, "invalid scan report: %v\n", err)
 		return exitOperationalError
 	}
+	progress.Update("Collecting evidence for the selected item")
 	payload, found, err := report.ExplainWithOptions(document, flags.Arg(0), report.TerminalOptions{
 		Color: terminalColorEnabled(colorMode, "terminal", outputPath, stdout),
 	})
 	if err != nil {
+		progress.Stop(false, "Could not collect report evidence")
 		fmt.Fprintf(stderr, "cannot explain report item: %v\n", err)
 		return exitOperationalError
 	}
 	if !found {
+		progress.Stop(false, "The report item was not found")
 		fmt.Fprintf(stderr, "report item %q was not found\n", flags.Arg(0))
 		return exitPartial
 	}
+	progress.Stop(true, "Explanation ready")
 	if err := writePayload(stdout, outputPath, payload, dependencies.writeFile); err != nil {
 		fmt.Fprintf(stderr, "cannot write explanation: %v\n", err)
 		return exitOperationalError
@@ -563,6 +614,16 @@ func normalizeColorMode(value string) (string, error) {
 	}
 }
 
+func normalizeProgressMode(value string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "auto", "always", "never":
+		return mode, nil
+	default:
+		return "", errors.New("--progress must be auto, always, or never")
+	}
+}
+
 func terminalColorEnabled(mode, format, outputPath string, output io.Writer) bool {
 	if format != "terminal" {
 		return false
@@ -573,15 +634,36 @@ func terminalColorEnabled(mode, format, outputPath string, output io.Writer) boo
 	if mode == "never" || outputPath != "" && outputPath != "-" {
 		return false
 	}
-	if _, disabled := os.LookupEnv("NO_COLOR"); disabled || os.Getenv("TERM") == "dumb" {
+	if _, disabled := os.LookupEnv("NO_COLOR"); disabled || !terminalSupportsInteraction() {
 		return false
 	}
+	return writerIsTerminal(output)
+}
+
+func progressColorEnabled(mode string, output io.Writer) bool {
+	if mode == "always" {
+		return true
+	}
+	if mode == "never" {
+		return false
+	}
+	if _, disabled := os.LookupEnv("NO_COLOR"); disabled || !terminalSupportsInteraction() {
+		return false
+	}
+	return writerIsTerminal(output)
+}
+
+func writerIsTerminal(output io.Writer) bool {
 	file, isFile := output.(*os.File)
 	if !isFile {
 		return false
 	}
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func terminalSupportsInteraction() bool {
+	return os.Getenv("TERM") != "dumb"
 }
 
 func printFlagDefaults(output io.Writer, flags *flag.FlagSet) {
@@ -600,7 +682,7 @@ func flagPlaceholder(item *flag.Flag) string {
 		return ""
 	}
 	switch item.Name {
-	case "color":
+	case "color", "progress":
 		return " MODE"
 	case "exclude":
 		return " PATTERN"

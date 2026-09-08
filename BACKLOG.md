@@ -278,3 +278,21 @@ listes principales à 12 entrées. Le mode détaillé, `explain`, `plan`, les ai
 la couleur explicite, `NO_COLOR`/`TERM=dumb` et l'absence d'ANSI dans le JSON
 sont testés. `go test -race ./...`, `go vet ./...` et la réinstallation dans
 `/opt/homebrew/bin` réussissent.
+
+### Lot 15 — Progression des commandes
+
+- [x] Exposer les étapes réelles du pipeline depuis l'orchestrateur de scan.
+- [x] Afficher un spinner avec l'étape courante et le temps écoulé sur TTY.
+- [x] Écrire exclusivement la progression sur `stderr`.
+- [x] Ajouter `--progress auto|always|never` à `scan`, `explain` et `plan`.
+- [x] Masquer automatiquement la progression dans les pipes et fichiers.
+- [x] Produire des lignes sans ANSI lorsqu'une progression non interactive est
+  explicitement forcée.
+- [x] Éviter le clignotement des commandes rapides avec un premier rendu différé.
+- [x] Garantir que le JSON sur `stdout` reste valide et inchangé.
+- [x] Valider le spinner sur un scan réel du Mac 01 et réinstaller le binaire.
+
+Gate validé sur le Mac 01 : le spinner suit les transitions réelles pendant
+16,3 secondes, de l'auto-détection à l'inventaire Xcode et Docker, puis disparaît
+avant le rapport. La séquence applicative, la progression forcée sans ANSI, le
+JSON décodable et `--progress never` sont couverts par les tests.

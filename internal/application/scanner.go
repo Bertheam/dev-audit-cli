@@ -3,6 +3,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,6 +49,9 @@ type Config struct {
 	// HeuristicInventoryFamilies prevents MISSING conclusions for inventory
 	// families whose roots were found heuristically and may be incomplete.
 	HeuristicInventoryFamilies []string
+	// Progress receives short presentation-only stage descriptions. Callers may
+	// leave it nil; it never affects scan results or ordering.
+	Progress func(string)
 }
 
 type Scanner struct {
@@ -103,16 +107,19 @@ func NewScannerWithAdapters(
 // sequence. Only adapters exposing read operations are accepted.
 func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocument {
 	startedAt := scanner.clock.Now().UTC()
+	reportProgress(config, "Discovering projects")
 	discoveryResult := scanner.discoverer.Discover(ctx, discovery.Config{
 		Roots:      cloneStrings(config.ProjectRoots),
 		Exclusions: cloneStrings(config.Exclusions),
 	})
 
+	reportProgress(config, progressCount("Analyzing", len(discoveryResult.Projects), "project", "projects"))
 	projects, analyzerDiagnostics := scanner.analyzer.AnalyzeProjects(
 		ctx,
 		discoveryResult.Projects,
 		analyzers.Config{},
 	)
+	reportProgress(config, "Reading Docker and Compose declarations")
 	environmentResult := scanner.environments.AnalyzeProjects(
 		ctx,
 		projects,
@@ -121,6 +128,7 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	resources, inventoryDiagnostics, completeScopes := scanner.inspectInventory(ctx, config)
 	dockerDiagnostics := []domain.Diagnostic{}
 	if config.DockerInventory {
+		reportProgress(config, "Inspecting the local Docker daemon")
 		if scanner.docker == nil {
 			dockerDiagnostics = append(dockerDiagnostics, domain.Diagnostic{
 				Code:     "DOCKER_INVENTORY_UNAVAILABLE",
@@ -141,6 +149,7 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 		}
 	}
 
+	reportProgress(config, progressCount("Correlating", len(environmentResult.Projects), "project", "projects"))
 	discoveryComplete := len(discoveryResult.Roots) > 0 &&
 		diagnosticsComplete(discoveryResult.Diagnostics) &&
 		!config.ProjectDiscoveryHeuristic
@@ -156,11 +165,13 @@ func (scanner *Scanner) Scan(ctx context.Context, config Config) domain.ScanDocu
 	if oldAfterDays <= 0 {
 		oldAfterDays = classification.DefaultOldAfterDays
 	}
+	reportProgress(config, progressCount("Classifying", len(correlationResult.Resources), "resource", "resources"))
 	classificationResult := classification.Apply(correlationResult.Resources, classification.Config{
 		EvaluatedAt:  completedAt,
 		OldAfterDays: oldAfterDays,
 	})
 
+	reportProgress(config, "Preparing the report")
 	diagnostics := make([]domain.Diagnostic, 0,
 		len(config.PreScanDiagnostics)+
 			len(discoveryResult.Diagnostics)+len(analyzerDiagnostics)+
@@ -290,6 +301,7 @@ func (scanner *Scanner) inspectInventory(
 			continue
 		}
 		configuredGroups++
+		reportProgress(config, inventoryProgressMessage(group.family))
 		result := scanner.inventory.Inspect(ctx, group.config)
 		resources = append(resources, result.Resources...)
 		diagnostics = append(diagnostics, result.Diagnostics...)
@@ -308,6 +320,39 @@ func (scanner *Scanner) inspectInventory(
 	}
 	sortDiagnostics(diagnostics)
 	return resources, diagnostics, completeScopes
+}
+
+func reportProgress(config Config, message string) {
+	if config.Progress != nil {
+		config.Progress(message)
+	}
+}
+
+func progressCount(verb string, count int, singular, plural string) string {
+	label := plural
+	if count == 1 {
+		label = singular
+	}
+	return fmt.Sprintf("%s %d %s", verb, count, label)
+}
+
+func inventoryProgressMessage(family string) string {
+	switch family {
+	case "android":
+		return "Inventorying the Android SDK"
+	case "android_avd":
+		return "Inventorying Android virtual devices"
+	case "flutter":
+		return "Inventorying Flutter and FVM SDKs"
+	case "gradle":
+		return "Inventorying Gradle caches"
+	case "java":
+		return "Inventorying Java toolchains"
+	case "apple":
+		return "Inventorying Xcode and simulator data"
+	default:
+		return "Inventorying local development resources"
+	}
 }
 
 func containsString(values []string, candidate string) bool {

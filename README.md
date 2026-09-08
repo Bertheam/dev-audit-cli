@@ -70,6 +70,11 @@ Sans configuration, la CLI recherche les projets et toolchains dans le `PATH`,
 les emplacements macOS usuels et les dossiers de développement courants. La
 recherche profonde reste bornée et ne suit pas les symlinks externes.
 
+Pendant une exécution interactive, une progression discrète indique l'étape
+réelle en cours et le temps écoulé : auto-détection, analyse des projets,
+inventaires, Docker, corrélation puis classification. Elle est écrite sur
+`stderr` et ne peut donc pas corrompre un rapport JSON envoyé sur `stdout`.
+
 ## Ce que la CLI comprend
 
 | Famille | Projets et exigences | Ressources locales |
@@ -197,12 +202,17 @@ Contrôler le rendu terminal :
 ```bash
 dev-audit scan --verbose
 dev-audit scan --color never
+dev-audit scan --progress never
 dev-audit plan --report audit.json --color always
 ```
 
 La couleur est activée automatiquement uniquement sur un terminal interactif.
 Elle est désactivée dans les fichiers, les pipes, avec `TERM=dumb` ou lorsque
 `NO_COLOR` est présent. Le JSON ne contient jamais de séquence ANSI.
+
+La progression utilise elle aussi `auto`, `always` ou `never`. En mode `auto`,
+elle apparaît uniquement sur un terminal interactif. `always` produit une liste
+d'étapes sans animation lorsqu'il est redirigé vers un journal.
 
 Réaliser un audit entièrement explicite :
 

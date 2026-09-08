@@ -51,6 +51,13 @@ les couleurs uniquement sur un TTY et respecte `NO_COLOR` ainsi que
 sans ANSI. `--verbose` modifie uniquement la densité du rendu, jamais le scan,
 le plan, leur ordre déterministe ou leur contrat public.
 
+La progression est une vue éphémère de la même couche CLI. Elle est écrite sur
+`stderr`, animée uniquement sur un terminal interactif et contrôlée par
+`--progress auto|always|never`. Le service applicatif accepte un callback
+optionnel de descriptions d'étapes ; ce callback n'entre ni dans le domaine, ni
+dans le rapport, ni dans son tri. Le mode forcé sur un writer non interactif
+utilise des lignes ordinaires sans contrôle de curseur.
+
 ### `internal/report`
 
 Produit les contrats JSON validés et les vues humaines de `scan`, `explain` et
