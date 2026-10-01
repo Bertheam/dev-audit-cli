@@ -250,7 +250,8 @@ dev-audit plan --help
 | Incertitude explicite | Une preuve insuffisante produit `UNKNOWN`, jamais une supposition favorable au nettoyage. |
 | Symlinks maîtrisés | Les parcours ne suivent pas les liens vers des chemins externes. |
 | Budgets bornés | Profondeur, volume de fichiers, sortie des commandes et durée globale sont limités. |
-| Données sensibles | Les AVD, simulateurs et conteneurs mutables sont signalés comme sensibles. |
+| Données sensibles | Les AVD, simulateurs, conteneurs et volumes de données Docker sont signalés comme sensibles. |
+| Volumes Docker | Tailles, liens et rôles sont regroupés par projet Compose ; aucun contenu n'est monté ou lu. |
 | Plan immuable | Le plan référence le SHA-256 du rapport et possède son propre identifiant de contenu. |
 | Suppression ciblée | Les chemins Gradle/Xcode sont validés structurellement ; racines et dossiers parents sont refusés. |
 | Revue obligatoire | Toute action planifiée porte `requires_explicit_confirmation=true`. |

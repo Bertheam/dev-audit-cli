@@ -296,3 +296,19 @@ Gate validé sur le Mac 01 : le spinner suit les transitions réelles pendant
 16,3 secondes, de l'auto-détection à l'inventaire Xcode et Docker, puis disparaît
 avant le rapport. La séquence applicative, la progression forcée sans ANSI, le
 JSON décodable et `--progress never` sont couverts par les tests.
+
+### Lot 16 — Analyse profonde des volumes Docker
+
+- [x] Inventorier les volumes, tailles logiques, liens et labels Compose avec
+  une commande Docker JSON strictement en lecture seule.
+- [x] Regrouper le rendu terminal par projet Compose.
+- [x] Distinguer les caches reconstructibles, données mutables sensibles et
+  volumes anonymes inconnus.
+- [x] Considérer un volume lié à un conteneur comme utilisé.
+- [x] Ne jamais monter le contenu d'un volume pendant le scan.
+- [x] Ne jamais convertir le seul état inutilisé en autorisation ou estimation
+  de suppression.
+- [ ] Enrichir la date de création lorsque `docker volume inspect` peut rester
+  borné par les budgets du scan.
+- [ ] Concevoir un workflow séparé de revue et confirmation projet par projet
+  avant toute suppression ciblée de volume.

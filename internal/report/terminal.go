@@ -175,6 +175,8 @@ func RenderTerminalWithOptions(document domain.ScanDocument, options TerminalOpt
 			style.muted("…"), len(document.Projects)-visibleProjects)
 	}
 
+	writeDockerVolumes(&output, style, document.InstalledResources)
+
 	orderedResources := append([]domain.InstalledResource(nil), document.InstalledResources...)
 	sort.SliceStable(orderedResources, func(left, right int) bool {
 		leftSize := int64(-1)
@@ -244,6 +246,77 @@ func RenderTerminalWithOptions(document domain.ScanDocument, options TerminalOpt
 
 	writeSafetyNotice(&output, style)
 	return []byte(output.String()), nil
+}
+
+func writeDockerVolumes(output *strings.Builder, style terminalStyle, resources []domain.InstalledResource) {
+	type volumeGroup struct {
+		name      string
+		resources []domain.InstalledResource
+		size      int64
+	}
+	groupsByName := map[string]*volumeGroup{}
+	volumeCount := 0
+	for _, resource := range resources {
+		if resource.Ecosystem != "docker" || resource.Component != "docker_volume" {
+			continue
+		}
+		volumeCount++
+		groupName := reportMetadata(resource.Metadata, "compose_project")
+		if groupName == "" {
+			if reportMetadata(resource.Metadata, "anonymous") == "true" {
+				groupName = "anonymous"
+			} else {
+				groupName = "unassigned"
+			}
+		}
+		group := groupsByName[groupName]
+		if group == nil {
+			group = &volumeGroup{name: groupName}
+			groupsByName[groupName] = group
+		}
+		group.resources = append(group.resources, resource)
+		if resource.SizeBytes != nil {
+			group.size += *resource.SizeBytes
+		}
+	}
+	if volumeCount == 0 {
+		return
+	}
+	groups := make([]*volumeGroup, 0, len(groupsByName))
+	for _, group := range groupsByName {
+		sort.Slice(group.resources, func(left, right int) bool {
+			return group.resources[left].Path < group.resources[right].Path
+		})
+		groups = append(groups, group)
+	}
+	sort.Slice(groups, func(left, right int) bool { return groups[left].name < groups[right].name })
+	output.WriteString(style.section(fmt.Sprintf("DOCKER VOLUMES  %d", volumeCount)))
+	for _, group := range groups {
+		fmt.Fprintf(output, "  %s · %s · %s\n", terminalText(group.name),
+			plural(len(group.resources), "volume", "volumes"), formatSize(&group.size))
+		for _, resource := range group.resources {
+			role := reportMetadata(resource.Metadata, "volume_role")
+			if role == "" {
+				role = strings.TrimPrefix(resource.Path, "docker://volume/")
+			}
+			usage := "unused"
+			if reportMetadata(resource.Metadata, "in_use") == "true" {
+				usage = "active"
+			}
+			kind := reportMetadata(resource.Metadata, "storage_kind")
+			fmt.Fprintf(output, "    %s %s · %s · %s · %s\n", resourceSymbol(style, resource),
+				terminalText(role), usage, terminalText(kind), formatSize(resource.SizeBytes))
+		}
+	}
+}
+
+func reportMetadata(metadata []domain.MetadataEntry, key string) string {
+	for _, item := range metadata {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+	return ""
 }
 
 func scanElapsed(startedAt, completedAt string) string {

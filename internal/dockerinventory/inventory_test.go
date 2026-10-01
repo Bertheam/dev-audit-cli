@@ -61,14 +61,15 @@ func TestInspectInventoriesAllowlistedDockerResources(t *testing.T) {
 				jsonFields("default", "default", "running", "v0.26.2", "linux/arm64", "", "default"),
 			}, "\n"))},
 			"buildx du": {Stdout: []byte(`{"CreatedAt":"2025-07-29T12:36:01Z","ID":"` + cacheID + `","LastUsedAt":"2025-08-05T09:24:09Z","Mutable":false,"Reclaimable":true,"Shared":true,"Size":"829889526","Type":"regular","UsageCount":1}`)},
+			"system df": {Stdout: []byte(`[{"Driver":"local","Labels":"com.docker.compose.project=acme,com.docker.compose.volume=postgres_data","Links":"0","Name":"acme_postgres_data","Scope":"local","Size":"48.18MB"}]`)},
 		},
 	}
 
 	result := New(runner).Inspect(context.Background(), Config{CommandTimeout: time.Second})
-	if len(result.Resources) != 4 || result.Stats.CommandsRun != 5 || result.Stats.ResourcesFound != 4 {
+	if len(result.Resources) != 5 || result.Stats.CommandsRun != 6 || result.Stats.ResourcesFound != 5 {
 		t.Fatalf("unexpected Docker inventory: %#v", result)
 	}
-	if !reflect.DeepEqual(result.CompleteComponents, []string{"docker_image"}) {
+	if !reflect.DeepEqual(result.CompleteComponents, []string{"docker_image", "docker_volume"}) {
 		t.Fatalf("complete Docker scopes = %#v", result.CompleteComponents)
 	}
 	image := findDockerResource(result.Resources, "docker_image")
@@ -92,6 +93,14 @@ func TestInspectInventoriesAllowlistedDockerResources(t *testing.T) {
 		!hasDockerMetadata(cache.Metadata, "last_used_source", "docker_buildx_du") {
 		t.Fatalf("unexpected build cache: %#v", cache)
 	}
+	volume := findDockerResource(result.Resources, "docker_volume")
+	if volume == nil || volume.SizeBytes == nil || *volume.SizeBytes != 48_180_000 ||
+		!hasDockerMetadata(volume.Metadata, "compose_project", "acme") ||
+		!hasDockerMetadata(volume.Metadata, "volume_role", "postgres_data") ||
+		!hasDockerMetadata(volume.Metadata, "in_use", "false") ||
+		!hasDockerMetadata(volume.Metadata, "sensitivity", "sensitive_mutable_data") {
+		t.Fatalf("unexpected Docker volume: %#v", volume)
+	}
 	for _, resource := range result.Resources {
 		if resource.ReferenceStatus != domain.ReferenceUnknown || !strings.HasPrefix(resource.Path, "docker://") {
 			t.Fatalf("Docker resource must remain local and unknown: %#v", resource)
@@ -104,6 +113,29 @@ func TestInspectInventoriesAllowlistedDockerResources(t *testing.T) {
 				t.Fatalf("destructive or mutating Docker command invoked: %q", joined)
 			}
 		}
+	}
+}
+
+func TestParseVolumesRejectsMalformedRowsAndClassifiesReconstructibleCaches(t *testing.T) {
+	content := []byte(`[
+		{"Driver":"local","Labels":"com.docker.compose.project=demo,com.docker.compose.volume=gradle_cache","Links":"0","Name":"demo_gradle_cache","Scope":"local","Size":"475.5MB"},
+		{"Driver":"local","Labels":"com.docker.volume.anonymous=","Links":"0","Name":"` + strings.Repeat("a", 64) + `","Scope":"local","Size":"38.99MB"},
+		{"Name":"bad/name","Links":"0","Size":"10MB"}
+	]`)
+	resources, diagnostics := parseVolumes(content, 10)
+	if len(resources) != 2 || !hasDockerDiagnostic(diagnostics, "DOCKER_VOLUME_OUTPUT_MALFORMED", domain.SeverityWarning) {
+		t.Fatalf("unexpected volume parsing result: %#v %#v", resources, diagnostics)
+	}
+	cache := resources[0]
+	if !hasDockerMetadata(cache.Metadata, "storage_kind", "reconstructible_cache") ||
+		!hasDockerMetadata(cache.Metadata, "in_use", "false") {
+		t.Fatalf("cache volume was not classified safely: %#v", cache)
+	}
+	if cache.PotentiallyReclaimable != nil {
+		t.Fatalf("an unused volume must never become an automatic cleanup recommendation: %#v", cache)
+	}
+	if !hasDockerMetadata(resources[1].Metadata, "storage_kind", "unknown") {
+		t.Fatalf("anonymous volume content must remain unknown without inspection: %#v", resources[1])
 	}
 }
 

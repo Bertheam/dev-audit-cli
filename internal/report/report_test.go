@@ -203,6 +203,31 @@ func TestRenderAndExplainDockerDaemonRelation(t *testing.T) {
 	}
 }
 
+func TestTerminalGroupsDockerVolumesByComposeProject(t *testing.T) {
+	document := sampleDocument()
+	size := int64(48_180_000)
+	document.InstalledResources = append(document.InstalledResources, domain.InstalledResource{
+		ID: "volume-db", Ecosystem: "docker", Component: "docker_volume",
+		Path: "docker://volume/acme_postgres_data", SizeBytes: &size,
+		ReferenceStatus: domain.ReferenceUnknown,
+		Metadata: []domain.MetadataEntry{
+			{Key: "compose_project", Value: "acme"},
+			{Key: "volume_role", Value: "postgres_data"},
+			{Key: "in_use", Value: "false"},
+			{Key: "storage_kind", Value: "mutable_project_data"},
+		},
+		Classifications: []domain.ResourceClassification{{
+			Category: domain.CategorySensitive, Rationale: "database", Evidence: []domain.Evidence{{SourceType: "test", RuleID: "test"}},
+		}},
+	})
+	terminal, err := RenderTerminal(document)
+	if err != nil || !bytes.Contains(terminal, []byte("DOCKER VOLUMES  1")) ||
+		!bytes.Contains(terminal, []byte("acme · 1 volume · 45.9 MiB")) ||
+		!bytes.Contains(terminal, []byte("postgres_data · unused · mutable_project_data")) {
+		t.Fatalf("terminal did not group Docker volumes safely: err=%v\n%s", err, terminal)
+	}
+}
+
 func TestTerminalEscapesControlCharacters(t *testing.T) {
 	document := sampleDocument()
 	document.Projects[0].Path = "/work/\x1b[31mred"

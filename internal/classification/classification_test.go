@@ -28,6 +28,34 @@ func TestApplyClassifiesPositiveUseAndReconstructibility(t *testing.T) {
 	}
 }
 
+func TestApplyClassifiesDockerVolumesFromUsageAndStorageKind(t *testing.T) {
+	result := Apply([]domain.InstalledResource{
+		{
+			ID: "active-db", Ecosystem: "docker", Component: "docker_volume", Path: "docker://volume/acme_postgres",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Metadata: []domain.MetadataEntry{
+				{Key: "in_use", Value: "true"},
+				{Key: "sensitivity", Value: "sensitive_mutable_data"},
+				{Key: "storage_kind", Value: "mutable_project_data"},
+			},
+		},
+		{
+			ID: "unused-cache", Ecosystem: "docker", Component: "docker_volume", Path: "docker://volume/acme_gradle_cache",
+			ReferenceStatus: domain.ReferenceUnknown,
+			Metadata: []domain.MetadataEntry{
+				{Key: "in_use", Value: "false"},
+				{Key: "storage_kind", Value: "reconstructible_cache"},
+			},
+		},
+	}, Config{EvaluatedAt: mustTime(t, "2026-10-01T12:00:00Z")})
+
+	assertCategories(t, result.Resources[0], domain.CategoryUsed, domain.CategorySensitive)
+	assertCategories(t, result.Resources[1], domain.CategoryReconstructible, domain.CategoryUnknown)
+	if result.Resources[1].PotentiallyReclaimable != nil {
+		t.Fatal("volume usage alone must not produce a reclaimable-space recommendation")
+	}
+}
+
 func TestApplyKeepsSensitiveAVDUsageUnknown(t *testing.T) {
 	result := Apply([]domain.InstalledResource{{
 		ID:              "avd",

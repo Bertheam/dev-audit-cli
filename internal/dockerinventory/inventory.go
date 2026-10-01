@@ -1,6 +1,7 @@
 // Package dockerinventory observes local Docker daemon storage through a small
 // allowlist of read-only CLI commands. It never reads container commands,
-// labels, environment variables, mounts, or file contents.
+// environment variables, mounts, or volume file contents. Only Docker Compose
+// volume labels are retained; arbitrary labels are ignored.
 package dockerinventory
 
 import (
@@ -146,6 +147,12 @@ func (inspector *Inspector) Inspect(ctx context.Context, config Config) Result {
 				"buildx", "du", "--format=json",
 			},
 			parse: parseBuildCache,
+		},
+		{
+			label:     "docker system df volumes",
+			component: "docker_volume",
+			arguments: []string{"system", "df", "--verbose", "--format", "{{json .Volumes}}"},
+			parse:     parseVolumes,
 		},
 	}
 
@@ -524,6 +531,113 @@ func parseBuildCache(content []byte, limit int) ([]domain.InstalledResource, []d
 		))
 	}
 	return resources, diagnostics
+}
+
+type volumeRow struct {
+	Driver string `json:"Driver"`
+	Labels string `json:"Labels"`
+	Links  string `json:"Links"`
+	Name   string `json:"Name"`
+	Scope  string `json:"Scope"`
+	Size   string `json:"Size"`
+}
+
+func parseVolumes(content []byte, limit int) ([]domain.InstalledResource, []domain.Diagnostic) {
+	rows := []volumeRow{}
+	diagnostics := []domain.Diagnostic{}
+	if err := json.Unmarshal(content, &rows); err != nil {
+		return nil, []domain.Diagnostic{diagnostic(
+			"DOCKER_VOLUME_OUTPUT_MALFORMED",
+			domain.SeverityWarning,
+			"Docker volume output was not a JSON array",
+		)}
+	}
+	resources := make([]domain.InstalledResource, 0, minInt(len(rows), limit))
+	for _, row := range rows {
+		if len(resources) >= limit {
+			diagnostics = appendOnce(diagnostics, maxResourcesDiagnostic(limit))
+			break
+		}
+		links, err := strconv.Atoi(row.Links)
+		if !isSafeDockerName(row.Name) || err != nil || links < 0 || parseDockerSize(row.Size) == nil {
+			diagnostics = appendOnce(diagnostics, diagnostic(
+				"DOCKER_VOLUME_OUTPUT_MALFORMED",
+				domain.SeverityWarning,
+				"Docker volume output contained a malformed row",
+			))
+			continue
+		}
+		project, role, anonymous := volumeLabels(row.Labels)
+		kind, sensitive := volumeStorageKind(row.Name, role, anonymous)
+		metadata := []domain.MetadataEntry{
+			entry("location_kind", "docker_object"),
+			entry("size_metric", "docker_volume_logical_size"),
+			entry("management", "docker volume"),
+			entry("links", strconv.Itoa(links)),
+			entry("in_use", strconv.FormatBool(links > 0)),
+			entry("storage_kind", kind),
+		}
+		for key, value := range map[string]string{
+			"driver": row.Driver, "scope": row.Scope,
+			"compose_project": project, "volume_role": role,
+		} {
+			if value != "" && safeReportValue(value) {
+				metadata = append(metadata, entry(key, value))
+			}
+		}
+		if anonymous {
+			metadata = append(metadata, entry("anonymous", "true"))
+		}
+		warnings := []string{"unused status does not prove that a Docker volume is safe to delete"}
+		if sensitive {
+			metadata = append(metadata, entry("sensitivity", "sensitive_mutable_data"))
+			warnings = append(warnings, "volume role may contain a database or other mutable project data")
+		}
+		resources = append(resources, resource(
+			"docker_volume", row.Name, nil, parseDockerSize(row.Size), metadata, warnings,
+		))
+	}
+	return resources, diagnostics
+}
+
+func volumeLabels(labels string) (project string, role string, anonymous bool) {
+	for _, label := range strings.Split(labels, ",") {
+		key, value, found := strings.Cut(label, "=")
+		if !found || !safeReportValue(value) {
+			continue
+		}
+		switch key {
+		case "com.docker.compose.project":
+			if isSafeDockerName(value) {
+				project = value
+			}
+		case "com.docker.compose.volume":
+			if isSafeDockerName(value) {
+				role = value
+			}
+		case "com.docker.volume.anonymous":
+			anonymous = true
+		}
+	}
+	return project, role, anonymous
+}
+
+func volumeStorageKind(name, role string, anonymous bool) (string, bool) {
+	value := strings.ToLower(role + " " + name)
+	for _, marker := range []string{"gradle_cache", "node_modules", "build_cache"} {
+		if strings.Contains(value, marker) {
+			return "reconstructible_cache", false
+		}
+	}
+	for _, marker := range []string{"postgres", "mysql", "mariadb", "mongo", "redis", "rabbitmq", "minio", "media", "storage"} {
+		if strings.Contains(value, marker) {
+			return "mutable_project_data", true
+		}
+	}
+	if anonymous {
+		return "unknown", false
+	}
+	return "unknown", false
 }
 
 func parseJSONFields(line string, count int) ([]string, bool) {
